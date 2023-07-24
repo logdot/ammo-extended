@@ -2,6 +2,7 @@
 #![allow(clippy::wildcard_imports)]
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::ptr_as_ptr)]
+#![allow(clippy::cast_possible_truncation)]
 
 use ammo::Ammo;
 use core::slice;
@@ -47,14 +48,10 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
 
     let mut string: String = String::new();
     for ammo in ammo_list {
-        // let nul_end = ammo
-        //     .item_name
-        //     .iter()
-        //     .position(|&c| c == b'\0')
-        //     .unwrap_or(32);
-
-        // string.push_str(std::str::from_utf8(&ammo.item_name[0..nul_end]).unwrap_or_default());
-        ammo.item_name.get_string().unwrap();
+        // ammo.item_name
+        //     .set_string("fuck shit".to_string().as_mut_str());
+        let temp = ammo.item_name.get_string().unwrap();
+        string.push_str(temp);
         string.push('\n');
 
         ammo.explosive_power = 1000.0;
