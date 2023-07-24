@@ -1,5 +1,8 @@
+use ammo::Ammo;
 use windows::{ Win32::Foundation::*, Win32::System::SystemServices::* };
 use windows::{ core::*, Win32::UI::WindowsAndMessaging::MessageBoxA, };
+
+pub mod ammo;
 
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
@@ -19,10 +22,15 @@ extern "system" fn DllMain(
 }
 
 fn attach() {
+    let ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
+    let ammo: &mut Ammo = unsafe { (* ammo_list_begin ).as_mut().unwrap() };
+
+    let pcstr_message = PCSTR::from_raw(ammo.item_name.as_ptr());
+
     unsafe {
         MessageBoxA(HWND(0),
+            pcstr_message,
             s!("HEY HEY!"),
-            s!("test"),
             Default::default()
         );
     }
