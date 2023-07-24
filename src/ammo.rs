@@ -1,17 +1,19 @@
-#[repr(C, packed)]
+use crate::escadra_string::EscadraString;
+
+#[repr(C)]
 pub struct Ammo {
     pub reticle: u64,
-    pub item_name: [u8; 32],
-    pub shell_kind: [u8; 32],
-    pub shell_kind2: [u8; 32],
-    pub milimeterage: [u8; 32],
-    pub shell_name: [u8; 32],
-    pub sign_ammo: [u8; 32],
+    pub item_name: EscadraString,
+    pub shell_kind: EscadraString,
+    pub shell_kind2: EscadraString,
+    pub milimeterage: EscadraString,
+    pub shell_name: EscadraString,
+    pub sign_ammo: EscadraString,
     pub unknown_cch: f32,
     pub padding: u32,
-    pub shell_in: [u8; 32],
-    pub shell_out: [u8; 32],
-    pub shell_far: [u8; 32],
+    pub shell_in: EscadraString,
+    pub shell_out: EscadraString,
+    pub shell_far: EscadraString,
     pub caliber: u32,
     pub index: u32,
     pub speed: f32,

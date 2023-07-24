@@ -11,7 +11,8 @@ use windows::Win32::System::LibraryLoader::FreeLibraryAndExitThread;
 use windows::Win32::System::Threading::{CreateThread, THREAD_CREATION_FLAGS};
 use windows::{Win32::Foundation::*, Win32::System::SystemServices::*};
 
-pub mod ammo;
+mod ammo;
+mod escadra_string;
 
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
@@ -46,13 +47,14 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
 
     let mut string: String = String::new();
     for ammo in ammo_list {
-        let nul_end = ammo
-            .item_name
-            .iter()
-            .position(|&c| c == b'\0')
-            .unwrap_or(32);
+        // let nul_end = ammo
+        //     .item_name
+        //     .iter()
+        //     .position(|&c| c == b'\0')
+        //     .unwrap_or(32);
 
-        string.push_str(std::str::from_utf8(&ammo.item_name[0..nul_end]).unwrap_or_default());
+        // string.push_str(std::str::from_utf8(&ammo.item_name[0..nul_end]).unwrap_or_default());
+        ammo.item_name.get_string().unwrap();
         string.push('\n');
 
         ammo.explosive_power = 1000.0;
