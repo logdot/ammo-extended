@@ -4,20 +4,20 @@
 #![allow(clippy::ptr_as_ptr)]
 
 use ammo::Ammo;
+use core::slice;
 use std::ffi::c_void;
+use windows::Win32::System::Console::{AllocConsole, FreeConsole};
 use windows::Win32::System::LibraryLoader::FreeLibraryAndExitThread;
 use windows::Win32::System::Threading::{CreateThread, THREAD_CREATION_FLAGS};
-use windows::Win32::UI::WindowsAndMessaging::MESSAGEBOX_STYLE;
-use windows::{core::*, Win32::UI::WindowsAndMessaging::MessageBoxA};
 use windows::{Win32::Foundation::*, Win32::System::SystemServices::*};
 
 pub mod ammo;
 
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
-extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut ()) -> bool {
-    if let DLL_PROCESS_ATTACH = call_reason {
-        unsafe {
+unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut ()) -> bool {
+    match call_reason {
+        DLL_PROCESS_ATTACH => unsafe {
             let handle = CreateThread(
                 None,
                 0,
@@ -28,26 +28,38 @@ extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut ()) ->
             )
             .unwrap();
             CloseHandle(handle)
-        };
-    }
+        },
+        DLL_PROCESS_DETACH => FreeConsole(),
+        _ => TRUE,
+    };
+
+    if let DLL_PROCESS_ATTACH = call_reason {}
 
     true
 }
 
 unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
+    AllocConsole();
+
     let ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
-    let ammo: &mut Ammo = unsafe { (*ammo_list_begin).as_mut().unwrap() };
+    let ammo_list = unsafe { slice::from_raw_parts_mut(*ammo_list_begin, 32) };
 
-    let pcstr_message = PCSTR::from_raw(ammo.item_name.as_ptr());
+    let mut string: String = String::new();
+    for ammo in ammo_list {
+        let nul_end = ammo
+            .item_name
+            .iter()
+            .position(|&c| c == b'\0')
+            .unwrap_or(32);
 
-    unsafe {
-        MessageBoxA(
-            HWND(0),
-            pcstr_message,
-            s!("HEY HEY!"),
-            MESSAGEBOX_STYLE::default(),
-        );
+        string.push_str(std::str::from_utf8(&ammo.item_name[0..nul_end]).unwrap_or_default());
+        string.push('\n');
+
+        ammo.explosive_power = 1000.0;
+        ammo.speed = 1000.0;
     }
+
+    print!("{string}");
 
     unsafe {
         FreeLibraryAndExitThread(HMODULE(handle as _), 0);
