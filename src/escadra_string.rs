@@ -1,5 +1,3 @@
-use std::str::Utf8Error;
-
 union CharPointer {
     chars: [u8; 16],
     pointer: *mut u8,
@@ -34,16 +32,16 @@ impl EscadraString {
         self.length = string.len() as _;
     }
 
-    pub fn get_string(&self) -> Result<&str, Utf8Error> {
+    pub fn get_string(&self) -> &str {
         if self.max_length > 15 {
             unsafe {
                 let buf: &[u8] = core::slice::from_raw_parts(self.string.pointer, self.length as _);
-                return std::str::from_utf8(buf);
+                return std::str::from_utf8(buf).unwrap();
             }
         }
 
         unsafe {
-            return std::str::from_utf8(&self.string.chars[0..self.length as _]);
+            return std::str::from_utf8(&self.string.chars[0..self.length as _]).unwrap();
         }
     }
 }
@@ -60,7 +58,7 @@ mod tests {
 
         es.set_string(string.as_mut_str());
 
-        let result = es.get_string().unwrap();
+        let result = es.get_string();
 
         assert_eq!(string, result);
     }
@@ -73,7 +71,7 @@ mod tests {
 
         es.set_string(&mut string);
 
-        let result = es.get_string().unwrap();
+        let result = es.get_string();
 
         assert_eq!(string, result);
     }
@@ -88,7 +86,7 @@ mod tests {
         es.set_string(&mut long_string);
         es.set_string(&mut short_string);
 
-        let result = es.get_string().unwrap();
+        let result = es.get_string();
 
         assert_eq!(short_string, result);
     }

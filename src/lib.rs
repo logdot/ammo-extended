@@ -50,7 +50,7 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     for ammo in ammo_list {
         // ammo.item_name
         //     .set_string("fuck shit".to_string().as_mut_str());
-        let temp = ammo.item_name.get_string().unwrap();
+        let temp = ammo.item_name.get_string();
         string.push_str(temp);
         string.push('\n');
 
