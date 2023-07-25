@@ -41,7 +41,7 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     let config_contents = std::fs::read_to_string("Modloader/config/ammo_extended.json")
         .expect("Couldn't find the config file! Where is it?");
 
-    let mut config_ammos: Vec<Ammo> = match serde_json::from_str(&config_contents) {
+    let config_ammos: Vec<Ammo> = match serde_json::from_str(&config_contents) {
         Ok(result) => result,
         Err(err) => panic!("Failed to read config file: \n{:?}", err),
     };
