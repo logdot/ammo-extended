@@ -1,8 +1,4 @@
-#![deny(clippy::pedantic)]
-#![allow(clippy::wildcard_imports)]
-#![allow(clippy::unreadable_literal)]
-#![allow(clippy::ptr_as_ptr)]
-#![allow(clippy::cast_possible_truncation)]
+//! A Highfleet mod to facilitate modifying and adding new calibers to the game
 
 use ammo::Ammo;
 use core::slice;
