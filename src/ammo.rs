@@ -1,10 +1,12 @@
 //! The Ammo
 
+use serde::{Deserialize, Serialize};
+
 use crate::escadra_string::EscadraString;
 
 /// Represents an Ammo object in Highfleet
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Ammo {
     /// What reticle to use when firing the ammo.
     ///

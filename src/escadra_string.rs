@@ -1,6 +1,9 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 /// An union that stores either a raw 16 char string or a pointer to a raw char string.
+#[derive(Clone, Copy)]
 union CharPointer {
     /// A raw 16 char string.
     /// Must be null terminated.
@@ -17,6 +20,9 @@ union CharPointer {
 /// The string should always be null terminated.
 /// The `max_length` is 15 by default.
 #[repr(C)]
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(from = "String")]
+#[serde(into = "String")]
 pub struct EscadraString {
     /// The \[u8;16\] char or the pointer to the char, depending on if max_length is either 15 or more.
     string: CharPointer,
@@ -77,6 +83,20 @@ impl EscadraString {
         unsafe {
             return std::str::from_utf8(&self.string.chars[0..self.length as _]).unwrap();
         }
+    }
+}
+
+impl From<String> for EscadraString {
+    fn from(mut value: String) -> Self {
+        let mut es = EscadraString::new();
+        es.set_string(value.as_mut_str());
+        es
+    }
+}
+
+impl From<EscadraString> for String {
+    fn from(val: EscadraString) -> Self {
+        val.get_string().to_string()
     }
 }
 
