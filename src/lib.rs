@@ -1,6 +1,6 @@
 //! A Highfleet mod to facilitate modifying and adding new calibers to the game
 
-use highfleet::v1_151::Ammo;
+use highfleet::v1_163::Ammo;
 use std::ffi::c_void;
 use std::slice;
 use windows::Win32::System::Console::{AllocConsole, FreeConsole};
@@ -36,8 +36,6 @@ unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut
 unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     AllocConsole();
 
-    // Read from memory:
-
     let config_contents = std::fs::read_to_string("Modloader/config/ammo_extended.json")
         .expect("Couldn't find the config file! Where is it?");
 
@@ -46,8 +44,15 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
         Err(err) => panic!("Failed to read config file: \n{:?}", err),
     };
 
-    let ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
-    let ammo_list = unsafe { slice::from_raw_parts_mut(*ammo_list_begin, 32) };
+    // let ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
+    let ammo_list_begin = 0x143a13be0 as *mut *mut Ammo;
+    let ammo_list_end = ammo_list_begin.offset(1);
+    let ammo_list_length = (*ammo_list_end).offset_from(*ammo_list_begin) as usize;
+
+    let ammo_list = slice::from_raw_parts_mut(*ammo_list_begin, ammo_list_length);
+
+    // let string = serde_json::to_string_pretty(ammo_list).unwrap();
+    // println!("{string}");
 
     for (hf_ammo, conf_ammo) in ammo_list.iter_mut().zip(config_ammos) {
         *hf_ammo = conf_ammo;
@@ -55,7 +60,5 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
 
     // *ammo_list_begin = config_ammos.as_mut_ptr();
 
-    unsafe {
-        FreeLibraryAndExitThread(HMODULE(handle as _), 0);
-    };
+    FreeLibraryAndExitThread(HMODULE(handle as _), 0);
 }
