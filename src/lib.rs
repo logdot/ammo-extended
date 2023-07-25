@@ -1,15 +1,12 @@
 //! A Highfleet mod to facilitate modifying and adding new calibers to the game
 
-use ammo::Ammo;
+use highfleet::v1_151::Ammo;
 use std::ffi::c_void;
 use std::slice;
 use windows::Win32::System::Console::{AllocConsole, FreeConsole};
 use windows::Win32::System::LibraryLoader::FreeLibraryAndExitThread;
 use windows::Win32::System::Threading::{CreateThread, THREAD_CREATION_FLAGS};
 use windows::{Win32::Foundation::*, Win32::System::SystemServices::*};
-
-mod ammo;
-mod escadra_string;
 
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
