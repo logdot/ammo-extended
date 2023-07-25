@@ -78,6 +78,21 @@ mod tests {
     }
 
     #[test]
+    fn set_string_below_16_chars_twice() {
+        let mut es = EscadraString::new();
+
+        let mut string = "Banana".to_string();
+
+        es.set_string(string.as_mut_str());
+        let result = es.get_string();
+        assert_eq!(string, result);
+
+        es.set_string(string.as_mut_str());
+        let result = es.get_string();
+        assert_eq!(string, result);
+    }
+
+    #[test]
     fn set_string_then_read_above_16_chars() {
         let mut es = EscadraString::new();
 
@@ -87,6 +102,20 @@ mod tests {
 
         let result = es.get_string();
 
+        assert_eq!(string, result);
+    }
+
+    #[test]
+    fn set_string_above_16_chars_twice() {
+        let mut es = EscadraString::new();
+
+        let mut string = "Banana Banana Banana Banana".to_string();
+        es.set_string(&mut string);
+        let result = es.get_string();
+        assert_eq!(string, result);
+
+        es.set_string(&mut string);
+        let result = es.get_string();
         assert_eq!(string, result);
     }
 
