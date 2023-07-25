@@ -1,8 +1,8 @@
 //! A Highfleet mod to facilitate modifying and adding new calibers to the game
 
 use ammo::Ammo;
-use core::slice;
 use std::ffi::c_void;
+use std::slice;
 use windows::Win32::System::Console::{AllocConsole, FreeConsole};
 use windows::Win32::System::LibraryLoader::FreeLibraryAndExitThread;
 use windows::Win32::System::Threading::{CreateThread, THREAD_CREATION_FLAGS};
@@ -39,23 +39,24 @@ unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut
 unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     AllocConsole();
 
+    // Read from memory:
+
+    let config_contents = std::fs::read_to_string("Modloader/config/ammo_extended.json")
+        .expect("Couldn't find the config file! Where is it?");
+
+    let mut config_ammos: Vec<Ammo> = match serde_json::from_str(&config_contents) {
+        Ok(result) => result,
+        Err(err) => panic!("Failed to read config file: \n{:?}", err),
+    };
+
     let ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
     let ammo_list = unsafe { slice::from_raw_parts_mut(*ammo_list_begin, 32) };
 
-    for ammo in ammo_list {
-        // ammo.item_name
-        //     .set_string("fuck shit".to_string().as_mut_str());
-
-        println!("{ammo:#?}");
-        println!();
-        println!("------------------");
-        println!();
-
-        if ammo.item_name.get_string() == "ITEM_AMMO_100MM" {
-            ammo.index = 70;
-            ammo.explosive_power = 0.3;
-        }
+    for (hf_ammo, conf_ammo) in ammo_list.iter_mut().zip(config_ammos) {
+        *hf_ammo = conf_ammo;
     }
+
+    // *ammo_list_begin = config_ammos.as_mut_ptr();
 
     unsafe {
         FreeLibraryAndExitThread(HMODULE(handle as _), 0);
