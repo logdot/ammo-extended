@@ -1,31 +1,5 @@
-[package]
-name = "ammo_extended"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-crate-type = ["cdylib"]
-
-[features]
-1_151 = []
-1_163 = []
-
-[build]
-target = "x86_64-pc-windows-msvc"
-
-[dependencies]
-highfleet = { path = "../highfleet" }
-serde = { version = "1.0.175", features = ["derive"] }
-serde_json = "1.0.103"
-
-[dependencies.windows]
-version = "0.*"
-features = [
-    "Win32_Foundation",
-    "Win32_System_SystemServices",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Threading",
-    "Win32_Security",
-    "Win32_System_Console",
+[workspace]
+members = [
+    "ammo_extended",
+    "highfleet-rs",
 ]

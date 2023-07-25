@@ -6,9 +6,18 @@ version = 3
 name = "ammo_extended"
 version = "0.1.0"
 dependencies = [
+ "highfleet",
  "serde",
  "serde_json",
  "windows",
+]
+
+[[package]]
+name = "highfleet"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
