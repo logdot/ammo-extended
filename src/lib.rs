@@ -51,8 +51,10 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
 
     let ammo_list = slice::from_raw_parts_mut(*ammo_list_begin, ammo_list_length);
 
-    // let string = serde_json::to_string_pretty(ammo_list).unwrap();
-    // println!("{string}");
+    if cfg!(debug_assertions) {
+        let string = serde_json::to_string_pretty(ammo_list).unwrap();
+        println!("{string}");
+    }
 
     for (hf_ammo, conf_ammo) in ammo_list.iter_mut().zip(config_ammos) {
         *hf_ammo = conf_ammo;
