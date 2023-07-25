@@ -1,6 +1,14 @@
 //! A Highfleet mod to facilitate modifying and adding new calibers to the game
 
+#[cfg(feature = "1_151")]
+use highfleet::v1_151::Ammo;
+
+#[cfg(feature = "1_163")]
 use highfleet::v1_163::Ammo;
+
+#[cfg(not(any(feature = "1_151", feature = "1_163")))]
+use highfleet::v1_163::Ammo;
+
 use std::ffi::c_void;
 use std::slice;
 use windows::Win32::System::Console::{AllocConsole, FreeConsole};
@@ -44,8 +52,11 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
         Err(err) => panic!("Failed to read config file: \n{:?}", err),
     };
 
-    // let ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
-    let ammo_list_begin = 0x143a13be0 as *mut *mut Ammo;
+    let mut ammo_list_begin: *mut *mut Ammo = 0x143a13be0 as *mut *mut Ammo;
+    if cfg!(feature = "1_151") {
+        ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
+    }
+
     let ammo_list_end = ammo_list_begin.offset(1);
     let ammo_list_length = (*ammo_list_end).offset_from(*ammo_list_begin) as usize;
 

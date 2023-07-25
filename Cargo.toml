@@ -6,7 +6,9 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+1_151 = []
+1_163 = []
 
 [build]
 target = "x86_64-pc-windows-msvc"
