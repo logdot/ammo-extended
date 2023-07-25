@@ -1,3 +1,5 @@
+use std::fmt;
+
 union CharPointer {
     chars: [u8; 16],
     pointer: *mut u8,
@@ -8,6 +10,18 @@ pub struct EscadraString {
     string: CharPointer,
     length: u64,
     max_length: u64,
+}
+
+impl fmt::Debug for EscadraString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let string = self.get_string();
+
+        f.debug_struct("EscadraString")
+            .field("string", &string)
+            .field("length", &self.length)
+            .field("max_length", &self.max_length)
+            .finish()
+    }
 }
 
 impl EscadraString {

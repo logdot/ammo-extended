@@ -1,6 +1,7 @@
 use crate::escadra_string::EscadraString;
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct Ammo {
     pub reticle: u64,
     pub item_name: EscadraString,

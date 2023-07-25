@@ -46,19 +46,20 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     let ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
     let ammo_list = unsafe { slice::from_raw_parts_mut(*ammo_list_begin, 32) };
 
-    let mut string: String = String::new();
     for ammo in ammo_list {
         // ammo.item_name
         //     .set_string("fuck shit".to_string().as_mut_str());
-        let temp = ammo.item_name.get_string();
-        string.push_str(temp);
-        string.push('\n');
 
-        ammo.explosive_power = 1000.0;
-        ammo.speed = 1000.0;
+        println!("{ammo:#?}");
+        println!();
+        println!("------------------");
+        println!();
+
+        if ammo.item_name.get_string() == "ITEM_AMMO_100MM" {
+            ammo.index = 70;
+            ammo.explosive_power = 0.3;
+        }
     }
-
-    print!("{string}");
 
     unsafe {
         FreeLibraryAndExitThread(HMODULE(handle as _), 0);
