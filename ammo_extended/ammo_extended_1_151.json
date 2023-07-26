@@ -1,6 +1,7 @@
 [
     {
-        "reticle": 4864899410250694656,
+        "reticle": 0,
+        "padding_4h": 0,
         "item_name": "ITEM_UNDEF",
         "shell_kind": "@",
         "shell_kind2": "@",
@@ -8,7 +9,7 @@
         "shell_name": "",
         "sign_ammo": "",
         "bullet_height": 0.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "",
         "shell_out": "",
         "shell_far": "",
@@ -28,7 +29,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 6311981738901897217,
+        "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_37MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -36,7 +38,7 @@
         "shell_name": "SHELL_37mm",
         "sign_ammo": "sign_ammo_unset",
         "bullet_height": 16.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_small",
         "shell_out": "shell_out_tiny",
         "shell_far": "shell_far_med",
@@ -56,7 +58,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 1480774641986306049,
+        "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_57MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -64,7 +67,7 @@
         "shell_name": "SHELL_57mm",
         "sign_ammo": "sign_ammo_unset",
         "bullet_height": 19.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_small",
         "shell_out": "shell_out_small2",
         "shell_far": "shell_far_med",
@@ -84,7 +87,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 3905625358111604737,
+        "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_100MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -92,7 +96,7 @@
         "shell_name": "SHELL_100mm",
         "sign_ammo": "sign_ammo_unset",
         "bullet_height": 24.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_med",
         "shell_out": "shell_out_small",
         "shell_far": "shell_far_med",
@@ -112,7 +116,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 10595089423311831041,
+        "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_130MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -120,7 +125,7 @@
         "shell_name": "SHELL_130mm",
         "sign_ammo": "sign_ammo_unset",
         "bullet_height": 28.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_med",
         "shell_out": "shell_out_med",
         "shell_far": "shell_far_med",
@@ -140,7 +145,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 17952866226724143105,
+        "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_180MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -148,7 +154,7 @@
         "shell_name": "SHELL_180mm",
         "sign_ammo": "sign_ammo_unset",
         "bullet_height": 38.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_med",
         "shell_out": "shell_out_big",
         "shell_far": "shell_out_big_far",
@@ -168,7 +174,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 3608670129560223745,
+        "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_203MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -176,7 +183,7 @@
         "shell_name": "SHELL_180mm",
         "sign_ammo": "sign_ammo_unset",
         "bullet_height": 38.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_med",
         "shell_out": "shell_out_big",
         "shell_far": "shell_out_big_far",
@@ -196,7 +203,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 16380520116028178433,
+        "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_305MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -204,7 +212,7 @@
         "shell_name": "SHELL_180mm",
         "sign_ammo": "sign_ammo_unset",
         "bullet_height": 38.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_med",
         "shell_out": "shell_out_big",
         "shell_far": "shell_out_big_far",
@@ -224,7 +232,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 10152069070057373699,
+        "reticle": 3,
+        "padding_4h": 0,
         "item_name": "ITEM_NAR122",
         "shell_kind": "Unguided rocket",
         "shell_kind2": "AIRCRAFT@ROCKET",
@@ -232,7 +241,7 @@
         "shell_name": "RZSO_220mm",
         "sign_ammo": "sign_ammo_craft",
         "bullet_height": 30.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_med",
         "shell_out": "shell_out_big",
         "shell_far": "shell_far_med",
@@ -252,7 +261,8 @@
         "padding_164h": 0
     },
     {
-        "reticle": 7466363412130299907,
+        "reticle": 3,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_220MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -260,7 +270,7 @@
         "shell_name": "RZSO_220mm",
         "sign_ammo": "sign_ammo_unset",
         "bullet_height": 30.0,
-        "padding_cch": 32760,
+        "padding_cch": 0,
         "shell_in": "shell_in_med",
         "shell_out": "shell_out_big",
         "shell_far": "shell_far_med",
@@ -281,6 +291,7 @@
     },
     {
         "reticle": 3,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_300MM",
         "shell_kind": "High explosive",
         "shell_kind2": "HIGH@EXPLOSIVE",
@@ -309,6 +320,7 @@
     },
     {
         "reticle": 3,
+        "padding_4h": 0,
         "item_name": "ITEM_NAR340",
         "shell_kind": "Unguided rocket",
         "shell_kind2": "AIRCRAFT@ROCKET",
@@ -337,6 +349,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_37MM_INC",
         "shell_kind": "Incendiary",
         "shell_kind2": "@INCENDIARY",
@@ -365,6 +378,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_57MM_INC",
         "shell_kind": "Incendiary",
         "shell_kind2": "@INCENDIARY",
@@ -393,6 +407,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_100MM_AP",
         "shell_kind": "Armor piercing",
         "shell_kind2": "ARMOR@PIERCING",
@@ -421,6 +436,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_100MM_PROXY",
         "shell_kind": "Proximity fuze",
         "shell_kind2": "PROXIMITY@FUZE",
@@ -449,6 +465,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_100MM_INC",
         "shell_kind": "Incendiary",
         "shell_kind2": "@INCENDIARY",
@@ -477,6 +494,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_130MM_AP",
         "shell_kind": "Armor piercing",
         "shell_kind2": "ARMOR@PIERCING",
@@ -505,6 +523,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_130MM_PROXY",
         "shell_kind": "Proximity fuze",
         "shell_kind2": "PROXIMITY@FUZE",
@@ -533,6 +552,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_130MM_INC",
         "shell_kind": "Incendiary",
         "shell_kind2": "@INCENDIARY",
@@ -561,6 +581,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_130MM_LG",
         "shell_kind": "Laser guided",
         "shell_kind2": "LASER@GUIDED",
@@ -589,6 +610,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_180MM_AP",
         "shell_kind": "Armor piercing",
         "shell_kind2": "ARMOR@PIERCING",
@@ -617,6 +639,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_180MM_PROXY",
         "shell_kind": "Proximity fuze",
         "shell_kind2": "PROXIMITY@FUZE",
@@ -645,6 +668,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_180MM_INC",
         "shell_kind": "Incendiary",
         "shell_kind2": "@INCENDIARY",
@@ -673,6 +697,7 @@
     },
     {
         "reticle": 1,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_180MM_LG",
         "shell_kind": "Laser guided",
         "shell_kind2": "LASER@GUIDED",
@@ -701,6 +726,7 @@
     },
     {
         "reticle": 3,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_220MM_INC",
         "shell_kind": "Incendiary",
         "shell_kind2": "@INCENDIARY",
@@ -729,6 +755,7 @@
     },
     {
         "reticle": 3,
+        "padding_4h": 0,
         "item_name": "ITEM_AMMO_300MM_INC",
         "shell_kind": "Incendiary",
         "shell_kind2": "@INCENDIARY",
@@ -757,6 +784,7 @@
     },
     {
         "reticle": 2,
+        "padding_4h": 0,
         "item_name": "ITEM_FAB100",
         "shell_kind": "General purpose bomb",
         "shell_kind2": "AIRCRAFT@BOMB",
@@ -785,6 +813,7 @@
     },
     {
         "reticle": 2,
+        "padding_4h": 0,
         "item_name": "ITEM_FAB250",
         "shell_kind": "General purpose bomb",
         "shell_kind2": "AIRCRAFT@BOMB",
@@ -813,6 +842,7 @@
     },
     {
         "reticle": 2,
+        "padding_4h": 0,
         "item_name": "ITEM_FAB500",
         "shell_kind": "General purpose bomb",
         "shell_kind2": "AIRCRAFT@BOMB",
@@ -841,6 +871,7 @@
     },
     {
         "reticle": 4,
+        "padding_4h": 0,
         "item_name": "ITEM_GUN37",
         "shell_kind": "37mm autocannon",
         "shell_kind2": "AIRCRAFT@CANNON",
@@ -869,6 +900,7 @@
     },
     {
         "reticle": 4,
+        "padding_4h": 0,
         "item_name": "ITEM_GUN57",
         "shell_kind": "57mm autocannon",
         "shell_kind2": "57mm autocannon",
@@ -893,6 +925,35 @@
         "unknown_158h": 0.2,
         "unknown_15ch": 7,
         "unknown_160h": 2.0,
+        "padding_164h": 0
+    },
+    {
+        "reticle": 5,
+        "padding_4h": 0,
+        "item_name": "ITEM_K13",
+        "shell_kind": "Air-to-air missile",
+        "shell_kind2": "AIRCRAFT@MISSILE",
+        "milimeterage": "",
+        "shell_name": "",
+        "sign_ammo": "sign_ammo_craft",
+        "bullet_height": 0.0,
+        "padding_cch": 0,
+        "shell_in": "",
+        "shell_out": "",
+        "shell_far": "",
+        "caliber": 0,
+        "index": 0,
+        "speed": 0.0,
+        "ap_drag": 0.0,
+        "explosive_power": 0.0,
+        "penetrative_power": 0.0,
+        "incendiary_power": 100.0,
+        "incendiary_14ch": 300,
+        "incendiary_150h": 0.3,
+        "incendiary_154h": 20.0,
+        "unknown_158h": 0.5,
+        "unknown_15ch": 10,
+        "unknown_160h": 4.0,
         "padding_164h": 0
     }
 ]
