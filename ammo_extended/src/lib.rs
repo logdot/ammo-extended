@@ -44,14 +44,6 @@ unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut
 unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     AllocConsole();
 
-    let config_contents = std::fs::read_to_string("Modloader/config/ammo_extended.json")
-        .expect("Couldn't find the config file! Where is it?");
-
-    let config_ammos: Vec<Ammo> = match serde_json::from_str(&config_contents) {
-        Ok(result) => result,
-        Err(err) => panic!("Failed to read config file: \n{:?}", err),
-    };
-
     let mut ammo_list_begin: *mut *mut Ammo = 0x143a13be0 as *mut *mut Ammo;
     if cfg!(feature = "1_151") {
         ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
@@ -65,7 +57,16 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     if cfg!(debug_assertions) {
         let string = serde_json::to_string_pretty(ammo_list).unwrap();
         println!("{string}");
+        return 0;
     }
+
+    let config_contents = std::fs::read_to_string("Modloader/config/ammo_extended.json")
+        .expect("Couldn't find the config file! Where is it?");
+
+    let config_ammos: Vec<Ammo> = match serde_json::from_str(&config_contents) {
+        Ok(result) => result,
+        Err(err) => panic!("Failed to read config file: \n{:?}", err),
+    };
 
     for (hf_ammo, conf_ammo) in ammo_list.iter_mut().zip(config_ammos) {
         *hf_ammo = conf_ammo;
