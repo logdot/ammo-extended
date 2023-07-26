@@ -13,6 +13,8 @@ jobs:
         runs-on: windows-latest
         steps:
             - uses: actions/checkout@v3
+              with:
+                submodules: 'true'
             - run: rustup update stable
             - run: |
                 mkdir 1_163\Modloader\mods
