@@ -1,0 +1,36 @@
+name: Cargo Build
+
+on:
+    push:
+        branches: "main"
+
+env: 
+  CARGO_TERM_COLOR: always
+
+jobs:
+    build:
+        name: "Build project"
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v3
+            - run: rustup update stable
+            - run: |
+                mkdir 1_163\Modloader\mods
+                mkdir 1_163\Modloader\config
+                mkdir 1_151\Modloader\mods
+                mkdir 1_151\Modloader\config
+            - run: cargo test --verbose
+            - run: cargo build --verbose --release --features 1_151
+            - run: |
+                mv ammo_extended\ammo_extended_1_151.json 1_151\Modloader\config\ammo_extended.json
+                mv target\release\ammo_extended.dll 1_151\Modloader\mods\
+            - run: cargo build --verbose --release --features 1_163
+            - run: |
+                mv ammo_extended\ammo_extended_1_163.json 1_163\Modloader\config\ammo_extended.json
+                mv target\release\ammo_extended.dll 1_163\Modloader\mods\
+            - uses: actions/upload-artifact@v3
+              with:
+                name: ammo-extensions
+                path: |
+                    1_163
+                    1_151
