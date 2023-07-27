@@ -73,13 +73,13 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
         })
         .ok();
 
-    if let Some(conf_ammos) = conf_ammos {
-        for (hf_ammo, conf_ammo) in ammo_list.iter_mut().zip(conf_ammos) {
-            *hf_ammo = conf_ammo;
-        }
-    }
+    if let Some(mut conf_ammos) = conf_ammos {
+        *ammo_list_begin = conf_ammos.as_mut_ptr();
 
-    // *ammo_list_begin = config_ammos.as_mut_ptr();
+        *ammo_list_end = (*ammo_list_begin).add(conf_ammos.len());
+
+        std::mem::forget(conf_ammos);
+    }
 
     FreeLibraryAndExitThread(HMODULE(handle as _), 0);
 }
