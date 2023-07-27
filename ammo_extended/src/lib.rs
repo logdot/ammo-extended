@@ -64,7 +64,6 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     if cfg!(debug_assertions) {
         let string = serde_json::to_string_pretty(ammo_list).unwrap();
         println!("{string}");
-        return 0;
     }
 
     let conf_ammos = read_config("Modloader/config/ammo_extended.json")
