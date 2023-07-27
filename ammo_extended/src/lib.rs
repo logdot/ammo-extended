@@ -9,6 +9,7 @@ use highfleet::v1_163::Ammo;
 #[cfg(not(any(feature = "1_151", feature = "1_163")))]
 use highfleet::v1_163::Ammo;
 
+use std::error::Error;
 use std::ffi::c_void;
 use std::slice;
 use windows::Win32::System::Console::{AllocConsole, FreeConsole};
@@ -41,6 +42,12 @@ unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut
     true
 }
 
+fn read_config(path: &str) -> Result<Vec<Ammo>, Box<dyn Error>> {
+    let file_contents = std::fs::read_to_string(path)?;
+
+    Ok(serde_json::from_str(&file_contents)?)
+}
+
 unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     AllocConsole();
 
@@ -60,16 +67,17 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
         return 0;
     }
 
-    let config_contents = std::fs::read_to_string("Modloader/config/ammo_extended.json")
-        .expect("Couldn't find the config file! Where is it?");
+    let conf_ammos = read_config("Modloader/config/ammo_extended.json")
+        .map_err(|err| {
+            println!("Failed to read config. Encountered error: \n{err:?}");
+            err
+        })
+        .ok();
 
-    let config_ammos: Vec<Ammo> = match serde_json::from_str(&config_contents) {
-        Ok(result) => result,
-        Err(err) => panic!("Failed to read config file: \n{:?}", err),
-    };
-
-    for (hf_ammo, conf_ammo) in ammo_list.iter_mut().zip(config_ammos) {
-        *hf_ammo = conf_ammo;
+    if let Some(conf_ammos) = conf_ammos {
+        for (hf_ammo, conf_ammo) in ammo_list.iter_mut().zip(conf_ammos) {
+            *hf_ammo = conf_ammo;
+        }
     }
 
     // *ammo_list_begin = config_ammos.as_mut_ptr();
