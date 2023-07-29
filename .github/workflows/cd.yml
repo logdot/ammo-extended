@@ -27,14 +27,16 @@ jobs:
                 mv ammo_extended\ammo_extended_1_151.json 1_151\Modloader\config\ammo_extended.json
                 mv target\release\ammo_extended.dll 1_151\Modloader\mods\
             - run: cargo build --verbose --release --features 1_163
-            - run: cargo doc --no-deps
             - run: |
                 mv ammo_extended\ammo_extended_1_163.json 1_163\Modloader\config\ammo_extended.json
                 mv target\release\ammo_extended.dll 1_163\Modloader\mods\
+            - run: cargo doc --no-deps
+            - run: |
+                mv target\doc .
             - uses: actions/upload-artifact@v3
               with:
                 name: ammo-extensions
                 path: |
                     1_163
                     1_151
-                    target\doc
+                    doc
