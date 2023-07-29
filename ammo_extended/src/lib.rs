@@ -74,6 +74,8 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
         .ok();
 
     if let Some(mut conf_ammos) = conf_ammos {
+        ammo_list.iter().for_each(std::mem::drop);
+
         *ammo_list_begin = conf_ammos.as_mut_ptr();
 
         *ammo_list_end = (*ammo_list_begin).add(conf_ammos.len());
