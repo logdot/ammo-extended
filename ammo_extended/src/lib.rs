@@ -14,6 +14,9 @@ use std::ffi::c_void;
 use std::slice;
 use windows::Win32::System::Console::{AllocConsole, FreeConsole};
 use windows::Win32::System::LibraryLoader::FreeLibraryAndExitThread;
+use windows::Win32::System::Memory::{
+    VirtualProtect, PAGE_EXECUTE_READWRITE, PAGE_PROTECTION_FLAGS,
+};
 use windows::Win32::System::Threading::{CreateThread, THREAD_CREATION_FLAGS};
 use windows::{Win32::Foundation::*, Win32::System::SystemServices::*};
 
@@ -42,6 +45,38 @@ unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut
     true
 }
 
+fn switch_override() {
+    // Equivalent to `MOV EAX, dword ptr [R15 + 0xCC]
+    let switch_instruction: [u8; 7] = [0x41, 0x8b, 0x87, 0xcc, 0x00, 00, 00];
+
+    let mut switch_addr = 0x1400302c8 as *mut u8;
+    if cfg!(feature = "1_151") {
+        switch_addr = 0x140030a37 as *mut u8;
+    }
+    let switch_addr = switch_addr;
+
+    unsafe {
+        let mut old_protect = PAGE_PROTECTION_FLAGS(0);
+        VirtualProtect(
+            switch_addr as *mut c_void,
+            switch_instruction.len(),
+            PAGE_EXECUTE_READWRITE,
+            &mut old_protect as *mut _,
+        );
+
+        for (i, byte) in switch_instruction.iter().enumerate() {
+            *switch_addr.add(i) = *byte;
+        }
+
+        VirtualProtect(
+            switch_addr as *mut c_void,
+            switch_instruction.len(),
+            old_protect,
+            &mut old_protect as *mut _,
+        );
+    }
+}
+
 fn read_config(path: &str) -> Result<Vec<Ammo>, Box<dyn Error>> {
     let file_contents = std::fs::read_to_string(path)?;
 
@@ -62,6 +97,11 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
     let ammo_list = slice::from_raw_parts_mut(*ammo_list_begin, ammo_list_length);
 
     if cfg!(debug_assertions) {
+        // Set the padding_cch to the same as the index, as we want to use the padding bytes as our own variable.
+        ammo_list
+            .iter_mut()
+            .for_each(|ammo| ammo.padding_cch = ammo.index as u32);
+
         let string = serde_json::to_string_pretty(ammo_list).unwrap();
         println!("{string}");
     }
@@ -81,6 +121,8 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
         *ammo_list_end = (*ammo_list_begin).add(conf_ammos.len());
 
         std::mem::forget(conf_ammos);
+
+        switch_override();
     }
 
     FreeLibraryAndExitThread(HMODULE(handle as _), 0);
