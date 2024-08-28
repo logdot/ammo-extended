@@ -29,7 +29,7 @@ unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut
                 None,
                 0,
                 Some(attach),
-                Some(std::ptr::addr_of!(dll_module).cast() as *const c_void),
+                Some(std::ptr::addr_of!(dll_module).cast()),
                 THREAD_CREATION_FLAGS(0),
                 None,
             )
@@ -37,8 +37,8 @@ unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut
             CloseHandle(handle)
         },
         DLL_PROCESS_DETACH => FreeConsole(),
-        _ => TRUE,
-    };
+        _ => Ok(()),
+    }.unwrap();
 
     if let DLL_PROCESS_ATTACH = call_reason {}
 
@@ -62,7 +62,7 @@ fn switch_override() {
             switch_instruction.len(),
             PAGE_EXECUTE_READWRITE,
             &mut old_protect as *mut _,
-        );
+        ).unwrap();
 
         for (i, byte) in switch_instruction.iter().enumerate() {
             *switch_addr.add(i) = *byte;
@@ -73,7 +73,7 @@ fn switch_override() {
             switch_instruction.len(),
             old_protect,
             &mut old_protect as *mut _,
-        );
+        ).unwrap();
     }
 }
 
@@ -84,7 +84,7 @@ fn read_config(path: &str) -> Result<Vec<Ammo>, Box<dyn Error>> {
 }
 
 unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
-    AllocConsole();
+    AllocConsole().unwrap();
 
     let mut ammo_list_begin: *mut *mut Ammo = 0x143a13be0 as *mut *mut Ammo;
     if cfg!(feature = "1_151") {
