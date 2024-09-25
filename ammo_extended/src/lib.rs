@@ -8,42 +8,16 @@ use highfleet::v1_163::Ammo;
 
 #[cfg(not(any(feature = "1_151", feature = "1_163")))]
 use highfleet::v1_163::Ammo;
+use log::{debug, error, trace};
+
+mod logger;
 
 use std::error::Error;
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void, CStr};
 use std::slice;
-use windows::Win32::System::Console::{AllocConsole, FreeConsole};
-use windows::Win32::System::LibraryLoader::FreeLibraryAndExitThread;
 use windows::Win32::System::Memory::{
     VirtualProtect, PAGE_EXECUTE_READWRITE, PAGE_PROTECTION_FLAGS,
 };
-use windows::Win32::System::Threading::{CreateThread, THREAD_CREATION_FLAGS};
-use windows::{Win32::Foundation::*, Win32::System::SystemServices::*};
-
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-unsafe extern "system" fn DllMain(dll_module: HMODULE, call_reason: u32, _: *mut ()) -> bool {
-    match call_reason {
-        DLL_PROCESS_ATTACH => unsafe {
-            let handle = CreateThread(
-                None,
-                0,
-                Some(attach),
-                Some(std::ptr::addr_of!(dll_module).cast()),
-                THREAD_CREATION_FLAGS(0),
-                None,
-            )
-            .unwrap();
-            CloseHandle(handle)
-        },
-        DLL_PROCESS_DETACH => FreeConsole(),
-        _ => Ok(()),
-    }.unwrap();
-
-    if let DLL_PROCESS_ATTACH = call_reason {}
-
-    true
-}
 
 fn switch_override() {
     // Equivalent to `MOV EAX, dword ptr [R15 + 0xCC]
@@ -83,13 +57,33 @@ fn read_config(path: &str) -> Result<Vec<Ammo>, Box<dyn Error>> {
     Ok(serde_json::from_str(&file_contents)?)
 }
 
-unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
-    AllocConsole().unwrap();
+#[no_mangle]
+unsafe extern fn init() -> bool {
+    attach()
+}
 
+#[no_mangle]
+unsafe extern fn version(version: *const c_char) -> bool {
+    let version = CStr::from_ptr(version).to_str().unwrap();
+    if cfg!(feature = "1_151") {
+        version == "Steam 1.151"
+    } else if cfg!(feature = "1_163") {
+        version == "Steam 1.163"
+    } else if version == "Gog 1.163" {
+        error!("Gog 1.163 detected");
+        error!("Your game will crash. Ammo Extended only supports steam versions of the game.");
+        false
+    } else {
+        false
+    }
+}
+
+unsafe fn attach() -> bool {
     let mut ammo_list_begin: *mut *mut Ammo = 0x143a13be0 as *mut *mut Ammo;
     if cfg!(feature = "1_151") {
         ammo_list_begin = 0x1439426e0 as *mut *mut Ammo;
     }
+    debug!("Ammo list begin: {ammo_list_begin:#?}");
 
     let ammo_list_end = ammo_list_begin.offset(1);
     let ammo_list_length = (*ammo_list_end).offset_from(*ammo_list_begin) as usize;
@@ -103,17 +97,19 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
             .for_each(|ammo| ammo.padding_cch = ammo.index as u32);
 
         let string = serde_json::to_string_pretty(ammo_list).unwrap();
-        println!("{string}");
+        trace!("{string}");
     }
 
+    debug!("Reading config file");
     let conf_ammos = read_config("Modloader/config/ammo_extended.json")
         .map_err(|err| {
-            println!("Failed to read config. Encountered error: \n{err:?}");
+            error!("Failed to read config. Encountered error: \n{err:?}");
             err
         })
         .ok();
 
     if let Some(mut conf_ammos) = conf_ammos {
+        debug!("Dropping old ammo list");
         ammo_list.iter().for_each(std::mem::drop);
 
         *ammo_list_begin = conf_ammos.as_mut_ptr();
@@ -121,9 +117,14 @@ unsafe extern "system" fn attach(handle: *mut c_void) -> u32 {
         *ammo_list_end = (*ammo_list_begin).add(conf_ammos.len());
 
         std::mem::forget(conf_ammos);
+        debug!("New ammo list set");
 
+        debug!("Override switch");
         switch_override();
-    }
+        debug!("Finished overriding switch");
 
-    FreeLibraryAndExitThread(HMODULE(handle as _), 0);
+        true
+    } else {
+        false
+    }
 }
