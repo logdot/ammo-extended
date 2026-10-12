@@ -11,8 +11,9 @@ use highfleet::v1_163::Ammo;
 use log::{debug, error, trace};
 
 mod config;
-mod logger;
 mod missile_ttl;
+
+highfleet_mod_api::export_logger!();
 
 use patchy::{PatchError, PatchSession, ProcessModule};
 use std::error::Error;
