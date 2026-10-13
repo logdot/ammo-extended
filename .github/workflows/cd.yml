@@ -12,7 +12,7 @@ jobs:
         name: "Build project"
         runs-on: windows-latest
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v7
               with:
                 submodules: 'true'
             - run: rustup update stable
@@ -33,7 +33,7 @@ jobs:
             - run: cargo doc --no-deps
             - run: |
                 mv target\doc .
-            - uses: actions/upload-artifact@v3
+            - uses: actions/upload-artifact@v7
               with:
                 name: ammo-extensions
                 path: |
