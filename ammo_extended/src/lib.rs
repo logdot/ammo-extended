@@ -11,8 +11,9 @@ use highfleet::v1_163::Ammo;
 use log::{debug, error, trace};
 
 mod config;
-mod logger;
 mod missile_ttl;
+
+highfleet_mod_api::export_logger!();
 
 use patchy::{PatchError, PatchSession, ProcessModule};
 use std::error::Error;
@@ -104,12 +105,17 @@ unsafe fn attach() -> bool {
     let ammo_list = slice::from_raw_parts_mut(*ammo_list_begin, ammo_list_length);
 
     if cfg!(debug_assertions) {
-        // Set the padding_cch to the same as the index, as we want to use the padding bytes as our own variable.
-        ammo_list
-            .iter_mut()
-            .for_each(|ammo| ammo.padding_cch = ammo.index as u32);
+        // Seed mod-owned behavior from the vanilla spawning identifier before dumping config.
+        ammo_list.iter_mut().for_each(|ammo| {
+            ammo.padding_cch = ammo.caliber as u32;
+            #[cfg(feature = "1_151")]
+            {
+                // Vanilla padding has no lifetime meaning; seed the mod's missile default.
+                ammo.padding_164h = 10.0f32.to_bits();
+            }
+        });
 
-        let string = serde_json::to_string_pretty(ammo_list).unwrap();
+        let string = config::serialize(ammo_list).unwrap();
         trace!("{string}");
     }
 
