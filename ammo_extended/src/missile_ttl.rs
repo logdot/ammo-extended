@@ -8,7 +8,7 @@ pub struct TtlPatch {
 
 pub fn patch(steam_1_151: bool) -> TtlPatch {
     let (rva, ammo_ttl_offset, body_ttl_offset) = if steam_1_151 {
-        // 1.151 has no native ammo TTL; config loading stores it in padding_164h.
+        // 1.151 has no native ammo lifespan; config loading stores TTL in padding_164h.
         (0x3135a, 0x164u32, 0x2b0u32)
     } else {
         (0x30d82, 0x16cu32, 0x2c0u32)
@@ -24,7 +24,7 @@ pub fn patch(steam_1_151: bool) -> TtlPatch {
     // R15 is the selected Ammo*, RBX is the newly created missile Body*.
     // EAX is dead here and is overwritten by subsequent calls before being read.
     let mut replacement = [0x90; 30];
-    replacement[..3].copy_from_slice(&[0x41, 0x8b, 0x87]); // MOV EAX, [R15 + ttl]
+    replacement[..3].copy_from_slice(&[0x41, 0x8b, 0x87]); // MOV EAX, [R15 + lifetime]
     replacement[3..7].copy_from_slice(&ammo_ttl_offset.to_le_bytes());
     for (instruction, offset) in replacement[7..25].chunks_exact_mut(6).zip(offsets) {
         instruction[..2].copy_from_slice(&[0x89, 0x83]); // MOV [RBX + offset], EAX
