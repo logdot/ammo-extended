@@ -9,6 +9,7 @@ use std::sync::{Mutex, OnceLock};
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Settings {
     pub damage: Option<f32>,
+    pub count: Option<u32>,
     pub fuse_time: Option<f32>,
 }
 
@@ -29,6 +30,13 @@ impl State {
     fn forget(&mut self, body: usize) {
         self.bodies.remove(&body);
     }
+
+    fn count(&self, body: usize, vanilla_count: u32) -> u32 {
+        self.bodies
+            .get(&body)
+            .and_then(|settings| settings.count)
+            .unwrap_or(vanilla_count)
+    }
 }
 
 static STATE: OnceLock<Mutex<State>> = OnceLock::new();
@@ -39,8 +47,14 @@ static STATE: OnceLock<Mutex<State>> = OnceLock::new();
 pub fn configure(ammos: &[Ammo], settings: &[Settings]) -> bool {
     assert_eq!(ammos.len(), settings.len());
     let mut state = State::default();
-    for (ammo, settings) in ammos.iter().zip(settings) {
+    for (index, (ammo, settings)) in ammos.iter().zip(settings).enumerate() {
         if ammo.logic == 150 && *settings != Settings::default() {
+            if settings.count == Some(0) {
+                log::warn!(
+                    "Ammo entry {index} (caliber {}) has shrapnel_count=0. This almost certainly will freeze or crash the game. Zero does not disable fragments.",
+                    ammo.caliber
+                );
+            }
             state.ammo.insert(ammo as *const Ammo as usize, *settings);
         }
     }
@@ -109,6 +123,19 @@ unsafe extern "C" fn set_fuse(parent: *mut u8) {
     }
 }
 
+unsafe extern "C" fn get_count(parent: *const u8, vanilla_count: u32) -> u32 {
+    with_state(|state| state.count(parent as usize, vanilla_count)).unwrap_or(vanilla_count)
+}
+
+#[cfg(feature = "1_151")]
+const COUNT_ARGUMENTS: &[u8] = &[0x48, 0x89, 0xf1, 0x44, 0x89, 0xfa]; // RCX=RSI; EDX=R15D.
+#[cfg(not(feature = "1_151"))]
+const COUNT_ARGUMENTS: &[u8] = &[0x48, 0x89, 0xf1, 0x44, 0x89, 0xea]; // RCX=RSI; EDX=R13D.
+#[cfg(feature = "1_151")]
+const STORE_COUNT: &[u8] = &[0x41, 0x89, 0xc7]; // MOV R15D,EAX.
+#[cfg(not(feature = "1_151"))]
+const STORE_COUNT: &[u8] = &[0x41, 0x89, 0xc5]; // MOV R13D,EAX.
+
 struct Site {
     rva: usize,
     /// Whole relocation-free instructions displaced by the detour.
@@ -117,13 +144,17 @@ struct Site {
     arguments: &'static [u8],
     /// At a Windows-x64 function entry RSP is 8 mod 16; inside these functions it is 0.
     entry: bool,
+    /// Assign the callback result to the fragment counter, preserving the original RAX.
+    count_result: bool,
 }
 
-fn sites() -> [Site; 4] {
+fn sites() -> [Site; 5] {
     #[cfg(feature = "1_151")]
-    let (capture_rva, destroy_rva, damage_rva, fuse_rva) = (0x503db, 0x17650, 0x339a0, 0x341b0);
+    let (capture_rva, destroy_rva, damage_rva, fuse_rva, count_rva) =
+        (0x503db, 0x17650, 0x339a0, 0x341b0, 0x33899);
     #[cfg(not(feature = "1_151"))]
-    let (capture_rva, destroy_rva, damage_rva, fuse_rva) = (0x52b49, 0x174d0, 0x33f80, 0x348a8);
+    let (capture_rva, destroy_rva, damage_rva, fuse_rva, count_rva) =
+        (0x52b49, 0x174d0, 0x33f80, 0x348a8, 0x33e77);
     [
         Site {
             rva: capture_rva,
@@ -132,6 +163,7 @@ fn sites() -> [Site; 4] {
             // MOV RCX,RBX (body); MOV RDX,RDI (ammo).
             arguments: &[0x48, 0x89, 0xd9, 0x48, 0x89, 0xfa],
             entry: false,
+            count_result: false,
         },
         Site {
             rva: destroy_rva,
@@ -139,6 +171,7 @@ fn sites() -> [Site; 4] {
             callback: forget as *const (),
             arguments: &[],
             entry: true,
+            count_result: false,
         },
         Site {
             rva: damage_rva,
@@ -147,6 +180,7 @@ fn sites() -> [Site; 4] {
             // MOV RCX,RBX (fragment); MOV RDX,RSI (parent).
             arguments: &[0x48, 0x89, 0xd9, 0x48, 0x89, 0xf2],
             entry: false,
+            count_result: false,
         },
         Site {
             rva: fuse_rva,
@@ -154,6 +188,16 @@ fn sites() -> [Site; 4] {
             callback: set_fuse as *const (),
             arguments: &[0x48, 0x89, 0xf1],
             entry: false, // MOV RCX,RSI.
+            count_result: false,
+        },
+        Site {
+            rva: count_rva,
+            // Counter initialization and the adjacent R12D setup are both replayed.
+            overwrite_len: 8,
+            callback: get_count as *const (),
+            arguments: COUNT_ARGUMENTS,
+            entry: false,
+            count_result: true,
         },
     ]
 }
@@ -164,11 +208,24 @@ fn trampoline(site: &Site, address: usize, original: &[u8]) -> Trampoline {
     // slot store and leaves vanilla damage/fuse intact when an override is absent.
     code.bytes(original);
     code.bytes(&[0x9c]); // PUSHFQ; preserved_call preserves registers but not flags.
-    if !site.entry {
+    if site.count_result {
+        // Also serves as the eight-byte alignment slot after PUSHFQ.
+        code.bytes(&[0x50]); // PUSH RAX.
+    } else if !site.entry {
         code.bytes(&[0x48, 0x8d, 0x64, 0x24, 0xf8]); // LEA RSP,[RSP-8], align call.
     }
-    code.preserved_call(site.callback, site.arguments, &[], ReturnType::None);
-    if !site.entry {
+    let result = if site.count_result {
+        ReturnType::Rax
+    } else {
+        ReturnType::None
+    };
+    code.preserved_call(site.callback, site.arguments, &[], result);
+    if site.count_result {
+        // Intentionally replace the nonvolatile loop counter only after the call.
+        // Zero is not special-cased: the original decrementing loop will underflow.
+        code.bytes(STORE_COUNT);
+        code.bytes(&[0x58]); // POP RAX.
+    } else if !site.entry {
         code.bytes(&[0x48, 0x8d, 0x64, 0x24, 0x08]);
     }
     code.bytes(&[0x9d]); // POPFQ.
@@ -199,10 +256,12 @@ mod tests {
     fn metadata_is_per_projectile_and_removed_on_reinitialization_or_destruction() {
         let a = Settings {
             damage: Some(7.0),
+            count: Some(20),
             fuse_time: Some(0.3),
         };
         let b = Settings {
             damage: Some(0.0),
+            count: None,
             fuse_time: None,
         };
         let mut state = State::default();
@@ -239,7 +298,40 @@ mod tests {
             state.capture(100, ammo);
             assert_eq!(state.bodies.get(&100), Some(&config.shrapnel[0]));
         });
+        config.shrapnel[0] = Settings {
+            count: Some(0),
+            ..Settings::default()
+        };
+        assert!(configure(&config.ammos, &config.shrapnel));
+        with_state(|state| {
+            let ammo = &config.ammos[0] as *const Ammo as usize;
+            state.capture(100, ammo);
+            assert_eq!(state.count(100, 10), 0);
+        });
         configure(&[], &[]);
+    }
+
+    #[test]
+    fn fragment_counts_are_snapshotted_without_clamping_or_zero_handling() {
+        let mut state = State::default();
+        assert_eq!(state.count(100, 23), 23);
+        for count in [0, 1, 10, 20, u32::MAX] {
+            state.ammo.insert(
+                10,
+                Settings {
+                    count: Some(count),
+                    ..Settings::default()
+                },
+            );
+            state.capture(100, 10);
+            assert_eq!(state.count(100, 23), count);
+            state.ammo.insert(10, Settings::default());
+            assert_eq!(state.count(100, 23), count);
+            state.capture(100, 10);
+            assert_eq!(state.count(100, 23), 23);
+            state.forget(100);
+            assert_eq!(state.count(100, 23), 23);
+        }
     }
 
     #[test]
@@ -249,10 +341,12 @@ mod tests {
                 Settings::default(),
                 Settings {
                     damage: Some(0.0),
+                    count: None,
                     fuse_time: Some(0.0),
                 },
                 Settings {
                     damage: Some(8.5),
+                    count: Some(20),
                     fuse_time: Some(0.75),
                 },
             ] {
@@ -293,6 +387,26 @@ mod tests {
             let bytes = code.build(address + 0x10000).unwrap();
             assert!(bytes.starts_with(&expected));
             assert_eq!(bytes[site.overwrite_len], 0x9c);
+            if site.count_result {
+                assert!(!site.entry);
+                assert_eq!(site.overwrite_len, 8);
+                assert_eq!(bytes[site.overwrite_len + 1], 0x50); // PUSH RAX aligns and saves.
+                let count_assignment = bytes.len() - 10;
+                assert_eq!(&bytes[count_assignment..count_assignment + 3], STORE_COUNT);
+                assert_eq!(bytes[count_assignment + 3], 0x58); // POP RAX, no zero branch.
+                #[cfg(feature = "1_151")]
+                {
+                    assert_eq!(site.rva, 0x33899);
+                    assert_eq!(STORE_COUNT, [0x41, 0x89, 0xc7]);
+                    assert_eq!(COUNT_ARGUMENTS, [0x48, 0x89, 0xf1, 0x44, 0x89, 0xfa]);
+                }
+                #[cfg(not(feature = "1_151"))]
+                {
+                    assert_eq!(site.rva, 0x33e77);
+                    assert_eq!(STORE_COUNT, [0x41, 0x89, 0xc5]);
+                    assert_eq!(COUNT_ARGUMENTS, [0x48, 0x89, 0xf1, 0x44, 0x89, 0xea]);
+                }
+            }
             assert_eq!(bytes[bytes.len() - 6], 0x9d);
             assert_eq!(bytes[bytes.len() - 5], 0xe9);
             let displacement = i32::from_le_bytes(bytes[bytes.len() - 4..].try_into().unwrap());
