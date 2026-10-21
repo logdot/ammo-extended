@@ -30,19 +30,13 @@ unsafe fn prepare_patches(session: &mut PatchSession, module: ProcessModule) -> 
         (0x302c8, [0x41, 0x8b, 0x87, 0x54, 0x01, 0x00, 0x00])
     };
     let switch_addr = module.resolve_rva(switch_rva)?;
-    let ttl = missile_ttl::patch(cfg!(feature = "1_151"));
-    let ttl_addr = module.resolve_rva(ttl.rva)?;
-    for (address, expected) in [
-        (switch_addr, original_switch.as_slice()),
-        (ttl_addr, ttl.original.as_slice()),
-    ] {
-        if slice::from_raw_parts(address as *const u8, expected.len()) != expected {
-            return Err(PatchError::SourceChanged { address });
-        }
+    if slice::from_raw_parts(switch_addr as *const u8, original_switch.len()) != original_switch {
+        return Err(PatchError::SourceChanged {
+            address: switch_addr,
+        });
     }
     session.overwrite(switch_addr, &switch_instruction)?;
-    session.overwrite(ttl_addr, &ttl.replacement)?;
-    Ok(())
+    missile_ttl::patch(session, module)
 }
 
 fn read_config(path: &str) -> Result<Vec<Ammo>, Box<dyn Error>> {
