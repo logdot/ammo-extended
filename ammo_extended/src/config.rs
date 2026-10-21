@@ -26,6 +26,8 @@ struct ConfigAmmo<T = Ammo> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shrapnel_damage: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    shrapnel_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     shrapnel_fuse_time: Option<f32>,
     #[cfg(feature = "1_151")]
     #[serde(default = "default_missile_lifespan")]
@@ -86,6 +88,7 @@ impl<'a> From<&'a Ammo> for ConfigAmmo<&'a Ammo> {
         Self {
             behavior: ammo.padding_cch,
             shrapnel_damage: None,
+            shrapnel_count: None,
             shrapnel_fuse_time: None,
             #[cfg(feature = "1_151")]
             lifespan: f32::from_bits(ammo.padding_164h),
@@ -101,6 +104,7 @@ pub fn parse(contents: &str) -> Result<Config, serde_json::Error> {
     for config in configs {
         shrapnel.push(Settings {
             damage: config.shrapnel_damage,
+            count: config.shrapnel_count,
             fuse_time: config.shrapnel_fuse_time,
         });
         ammos.push(Ammo::from(config));
@@ -124,6 +128,7 @@ pub fn serialize_with_settings(
         .map(|(ammo, settings)| {
             let mut config = ConfigAmmo::from(ammo);
             config.shrapnel_damage = settings.damage;
+            config.shrapnel_count = settings.count;
             config.shrapnel_fuse_time = settings.fuse_time;
             config
         })
@@ -160,6 +165,7 @@ mod tests {
             .all(|settings| *settings == Settings::default()));
         let json = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
         assert!(!json.contains("shrapnel_damage"));
+        assert!(!json.contains("shrapnel_count"));
         assert!(!json.contains("shrapnel_fuse_time"));
         let expected: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
         assert_eq!(
@@ -177,6 +183,7 @@ mod tests {
         json[1]["caliber"] = json[0]["caliber"].clone();
         json[0]["shrapnel_damage"] = 3.5.into();
         json[1]["shrapnel_fuse_time"] = 0.75.into();
+        json[2]["shrapnel_count"] = 20.into();
         json[2]["shrapnel_damage"] = 0.0.into();
         json[2]["shrapnel_fuse_time"] = 0.0.into();
         let config = super::parse(&json.to_string()).unwrap();
@@ -184,6 +191,7 @@ mod tests {
             config.shrapnel[0],
             Settings {
                 damage: Some(3.5),
+                count: None,
                 fuse_time: None
             }
         );
@@ -191,6 +199,7 @@ mod tests {
             config.shrapnel[1],
             Settings {
                 damage: None,
+                count: None,
                 fuse_time: Some(0.75)
             }
         );
@@ -198,6 +207,7 @@ mod tests {
             config.shrapnel[2],
             Settings {
                 damage: Some(0.0),
+                count: Some(20),
                 fuse_time: Some(0.0)
             }
         );
@@ -223,7 +233,63 @@ mod tests {
         }
         let debug_dump = serialize(&config.ammos).unwrap();
         assert!(!debug_dump.contains("shrapnel_damage"));
+        assert!(!debug_dump.contains("shrapnel_count"));
         assert!(!debug_dump.contains("shrapnel_fuse_time"));
+    }
+
+    #[test]
+    fn count_only_settings_round_trip_unchanged_without_native_changes() {
+        let original: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        let original_ammos = parse(CONFIG).unwrap();
+        for count in [0, 1, 10, 20, u32::MAX] {
+            let mut json = original.clone();
+            json[0]["shrapnel_count"] = count.into();
+            let config = super::parse(&json.to_string()).unwrap();
+            assert_eq!(
+                config.shrapnel[0],
+                Settings {
+                    count: Some(count),
+                    ..Settings::default()
+                }
+            );
+            assert!(config.shrapnel[1..]
+                .iter()
+                .all(|settings| *settings == Settings::default()));
+            assert_eq!(
+                serde_json::to_value(&config.ammos).unwrap(),
+                serde_json::to_value(&original_ammos).unwrap()
+            );
+            let serialized = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&serialized).unwrap(),
+                json
+            );
+            assert_eq!(super::parse(&serialized).unwrap().shrapnel, config.shrapnel);
+            assert!(!serialize(&config.ammos).unwrap().contains("shrapnel_count"));
+        }
+    }
+
+    #[test]
+    fn shrapnel_count_uses_normal_u32_deserialization() {
+        let original: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        for value in [
+            "-1",
+            "4294967296",
+            "1.5",
+            "1.0",
+            "\"10\"",
+            "true",
+            "[]",
+            "{}",
+        ] {
+            let mut json = original.clone();
+            json[0]["shrapnel_count"] = "REPLACE_VALUE".into();
+            let text = json.to_string().replace("\"REPLACE_VALUE\"", value);
+            assert!(
+                super::parse(&text).is_err(),
+                "accepted shrapnel_count={value}"
+            );
+        }
     }
 
     #[test]
@@ -268,9 +334,12 @@ mod tests {
     fn null_shrapnel_settings_are_omitted_like_defaults() {
         let mut json: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
         json[0]["shrapnel_damage"] = serde_json::Value::Null;
+        json[0]["shrapnel_count"] = serde_json::Value::Null;
         json[0]["shrapnel_fuse_time"] = serde_json::Value::Null;
         let config = super::parse(&json.to_string()).unwrap();
         assert_eq!(config.shrapnel[0], Settings::default());
+        let serialized = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+        assert!(!serialized.contains("shrapnel_count"));
     }
 
     #[test]
@@ -280,6 +349,7 @@ mod tests {
         for value in [-1.0, f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
             config.shrapnel[0] = Settings {
                 damage: Some(value),
+                count: None,
                 fuse_time: Some(value),
             };
             let json = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
