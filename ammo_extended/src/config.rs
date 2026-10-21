@@ -1,4 +1,11 @@
-use crate::Ammo;
+use crate::{shrapnel::Settings, Ammo};
+
+/// Native ammo and mod-only settings in matching config-file order.
+/// `shrapnel[i]` belongs to `ammos[i]`, independently of caliber or logic.
+pub struct Config {
+    pub ammos: Vec<Ammo>,
+    pub shrapnel: Vec<Settings>,
+}
 
 #[cfg(feature = "1_151")]
 fn default_missile_lifespan() -> f32 {
@@ -16,6 +23,10 @@ struct ConfigAmmo<T = Ammo> {
     /// Selects vanilla spawning code, including its spread and muzzle flash.
     /// Stored in native padding by this mod, independently of the caliber identifier.
     behavior: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shrapnel_damage: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shrapnel_fuse_time: Option<f32>,
     #[cfg(feature = "1_151")]
     #[serde(default = "default_missile_lifespan")]
     lifespan: f32,
@@ -74,6 +85,8 @@ impl<'a> From<&'a Ammo> for ConfigAmmo<&'a Ammo> {
     fn from(ammo: &'a Ammo) -> Self {
         Self {
             behavior: ammo.padding_cch,
+            shrapnel_damage: None,
+            shrapnel_fuse_time: None,
             #[cfg(feature = "1_151")]
             lifespan: f32::from_bits(ammo.padding_164h),
             ammo,
@@ -81,9 +94,41 @@ impl<'a> From<&'a Ammo> for ConfigAmmo<&'a Ammo> {
     }
 }
 
-pub fn parse(contents: &str) -> Result<Vec<Ammo>, serde_json::Error> {
-    let ammos: Vec<ConfigAmmo> = serde_json::from_str(contents)?;
-    Ok(ammos.into_iter().map(Ammo::from).collect())
+pub fn parse(contents: &str) -> Result<Config, serde_json::Error> {
+    let configs: Vec<ConfigAmmo> = serde_json::from_str(contents)?;
+    let mut ammos = Vec::with_capacity(configs.len());
+    let mut shrapnel = Vec::with_capacity(configs.len());
+    for config in configs {
+        shrapnel.push(Settings {
+            damage: config.shrapnel_damage,
+            fuse_time: config.shrapnel_fuse_time,
+        });
+        ammos.push(Ammo::from(config));
+    }
+    Ok(Config { ammos, shrapnel })
+}
+
+/// Serialize per-ammo overrides without dropping them or changing index alignment.
+pub fn serialize_with_settings(
+    ammos: &[Ammo],
+    settings: &[Settings],
+) -> Result<String, serde_json::Error> {
+    if ammos.len() != settings.len() {
+        return Err(serde::ser::Error::custom(
+            "ammo and shrapnel settings lengths differ",
+        ));
+    }
+    let configs: Vec<_> = ammos
+        .iter()
+        .zip(settings)
+        .map(|(ammo, settings)| {
+            let mut config = ConfigAmmo::from(ammo);
+            config.shrapnel_damage = settings.damage;
+            config.shrapnel_fuse_time = settings.fuse_time;
+            config
+        })
+        .collect();
+    serde_json::to_string_pretty(&configs)
 }
 
 pub fn serialize(ammos: &[Ammo]) -> Result<String, serde_json::Error> {
@@ -95,10 +140,160 @@ pub fn serialize(ammos: &[Ammo]) -> Result<String, serde_json::Error> {
 mod tests {
     use super::*;
 
+    // Keep native-schema tests focused on the ammo half of the parsed config.
+    fn parse(contents: &str) -> Result<Vec<Ammo>, serde_json::Error> {
+        super::parse(contents).map(|config| config.ammos)
+    }
+
     #[cfg(feature = "1_151")]
     const CONFIG: &str = include_str!("../ammo_extended_1_151.json");
     #[cfg(not(feature = "1_151"))]
     const CONFIG: &str = include_str!("../ammo_extended_1_163.json");
+
+    #[test]
+    fn omitted_shrapnel_settings_remain_vanilla_and_are_not_serialized() {
+        let config = super::parse(CONFIG).unwrap();
+        assert_eq!(config.shrapnel.len(), config.ammos.len());
+        assert!(config
+            .shrapnel
+            .iter()
+            .all(|settings| *settings == Settings::default()));
+        let json = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+        assert!(!json.contains("shrapnel_damage"));
+        assert!(!json.contains("shrapnel_fuse_time"));
+        let expected: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&json).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn shrapnel_overrides_are_independent_and_round_trip_without_native_changes() {
+        let original = parse(CONFIG).unwrap();
+        let mut json: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        // Settings belong to the array index, even for duplicate identifiers and non-150 logic.
+        json[0]["logic"] = 140.into();
+        json[1]["caliber"] = json[0]["caliber"].clone();
+        json[0]["shrapnel_damage"] = 3.5.into();
+        json[1]["shrapnel_fuse_time"] = 0.75.into();
+        json[2]["shrapnel_damage"] = 0.0.into();
+        json[2]["shrapnel_fuse_time"] = 0.0.into();
+        let config = super::parse(&json.to_string()).unwrap();
+        assert_eq!(
+            config.shrapnel[0],
+            Settings {
+                damage: Some(3.5),
+                fuse_time: None
+            }
+        );
+        assert_eq!(
+            config.shrapnel[1],
+            Settings {
+                damage: None,
+                fuse_time: Some(0.75)
+            }
+        );
+        assert_eq!(
+            config.shrapnel[2],
+            Settings {
+                damage: Some(0.0),
+                fuse_time: Some(0.0)
+            }
+        );
+        assert!(config.shrapnel[3..]
+            .iter()
+            .all(|settings| *settings == Settings::default()));
+        let serialized = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&serialized).unwrap(),
+            json
+        );
+        let round_trip = super::parse(&serialized).unwrap();
+        assert_eq!(round_trip.shrapnel, config.shrapnel);
+        for (index, ammo) in config.ammos.iter().enumerate() {
+            let mut expected = serde_json::to_value(&original[index]).unwrap();
+            if index == 0 {
+                expected["logic"] = 140.into();
+            }
+            if index == 1 {
+                expected["caliber"] = json[0]["caliber"].clone();
+            }
+            assert_eq!(serde_json::to_value(ammo).unwrap(), expected);
+        }
+        let debug_dump = serialize(&config.ammos).unwrap();
+        assert!(!debug_dump.contains("shrapnel_damage"));
+        assert!(!debug_dump.contains("shrapnel_fuse_time"));
+    }
+
+    #[test]
+    fn accepts_negative_shrapnel_values_and_f32_overflow() {
+        let original: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        for field in ["shrapnel_damage", "shrapnel_fuse_time"] {
+            for (text, expected) in [
+                ("-1", -1.0f32),
+                ("-0.001", -0.001),
+                ("1e39", f32::INFINITY),
+                ("-1e39", f32::NEG_INFINITY),
+            ] {
+                let mut json = original.clone();
+                json[0][field] = "REPLACE_VALUE".into();
+                let text = json.to_string().replace("\"REPLACE_VALUE\"", text);
+                let config = super::parse(&text).unwrap();
+                let settings = config.shrapnel[0];
+                let actual = if field == "shrapnel_damage" {
+                    settings.damage
+                } else {
+                    settings.fuse_time
+                };
+                assert_eq!(actual, Some(expected));
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_non_numeric_shrapnel_values_and_json_number_overflow() {
+        let original: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        for field in ["shrapnel_damage", "shrapnel_fuse_time"] {
+            for value in ["1e400", "\"NaN\"", "\"Infinity\"", "true", "[]", "{}"] {
+                let mut json = original.clone();
+                json[0][field] = "REPLACE_VALUE".into();
+                let text = json.to_string().replace("\"REPLACE_VALUE\"", value);
+                assert!(super::parse(&text).is_err(), "accepted {field}={value}");
+            }
+        }
+    }
+
+    #[test]
+    fn null_shrapnel_settings_are_omitted_like_defaults() {
+        let mut json: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        json[0]["shrapnel_damage"] = serde_json::Value::Null;
+        json[0]["shrapnel_fuse_time"] = serde_json::Value::Null;
+        let config = super::parse(&json.to_string()).unwrap();
+        assert_eq!(config.shrapnel[0], Settings::default());
+    }
+
+    #[test]
+    fn serialization_rejects_misalignment_but_does_not_validate_float_values() {
+        let mut config = super::parse(CONFIG).unwrap();
+        assert!(serialize_with_settings(&config.ammos, &config.shrapnel[1..]).is_err());
+        for value in [-1.0, f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
+            config.shrapnel[0] = Settings {
+                damage: Some(value),
+                fuse_time: Some(value),
+            };
+            let json = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+            let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+            // serde_json represents non-finite floats as null, not JSON numbers.
+            let expected = if value.is_finite() {
+                serde_json::json!(value)
+            } else {
+                serde_json::Value::Null
+            };
+            assert_eq!(json[0]["shrapnel_damage"], expected);
+            assert_eq!(json[0]["shrapnel_fuse_time"], expected);
+        }
+    }
 
     #[test]
     fn storage_matches_patch_offsets_and_native_ammo_size() {

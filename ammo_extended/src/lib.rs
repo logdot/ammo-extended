@@ -12,6 +12,7 @@ use log::{debug, error, trace};
 
 mod config;
 mod missile_ttl;
+mod shrapnel;
 
 highfleet_mod_api::export_logger!();
 
@@ -39,7 +40,7 @@ unsafe fn prepare_patches(session: &mut PatchSession, module: ProcessModule) -> 
     missile_ttl::patch(session, module)
 }
 
-fn read_config(path: &str) -> Result<Vec<Ammo>, Box<dyn Error>> {
+fn read_config(path: &str) -> Result<config::Config, Box<dyn Error>> {
     let file_contents = std::fs::read_to_string(path)?;
 
     Ok(config::parse(&file_contents)?)
@@ -121,7 +122,14 @@ unsafe fn attach() -> bool {
         })
         .ok();
 
-    if let Some(mut conf_ammos) = conf_ammos {
+    if let Some(config) = conf_ammos {
+        let mut conf_ammos = config.ammos;
+        if shrapnel::configure(&conf_ammos, &config.shrapnel) {
+            if let Err(err) = shrapnel::patch(&mut patches, module) {
+                error!("Failed to prepare shrapnel patches: {err}");
+                return false;
+            }
+        }
         if let Err(err) = patches.install_permanently() {
             error!("Failed to install ammo patches: {err}");
             return false;
@@ -136,7 +144,7 @@ unsafe fn attach() -> bool {
         std::mem::forget(conf_ammos);
         debug!("New ammo list set");
 
-        debug!("Ammo behaviour switch and configured missile TTL patches installed");
+        debug!("Ammo patches installed (shrapnel hooks enabled only when configured)");
 
         true
     } else {
