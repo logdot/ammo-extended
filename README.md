@@ -24,6 +24,31 @@ The shipped config also contains `90` for harpoon, `100` for KAZ, and `0` for sp
 These values are not an exhaustive validation enum.
 The loader accepts a `u32` without enforcing a behavior whitelist.
 
+## Shrapnel damage and fuse time
+
+Each ammo entry accepts two optional overrides for shrapnel projectiles (`logic: 150`):
+
+```json
+{
+  "caliber": 999,
+  "behavior": 25,
+  "logic": 150,
+  "shrapnel_damage": 3.5,
+  "shrapnel_fuse_time": 0.75
+}
+```
+
+This is a partial entry; keep the other required ammo fields.
+The overrides are stored per ammo entry, independently of caliber identifiers.
+They only affect shrapnel runtime logic; other logic values do not use them.
+
+- `shrapnel_damage` sets each fragment's **`explosive_power`**, not its final HP damage.
+  Omit it to keep the vanilla value of **2**.
+- `shrapnel_fuse_time` overrides the parent shrapnel shell's fuse in **seconds**.
+  Omit it to keep the vanilla calculation: **100 world units divided by initial speed**.
+  State updates are quantized.
+  Therefore the actual burst occurs on a state update rather than necessarily at the exact configured instant.
+
 ## Missile lifetime
 
 Ammo using missile spawning behaviour honors its configured lifetime in seconds instead of the vanilla hardcoded 10-second lifetime.
