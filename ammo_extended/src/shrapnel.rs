@@ -95,7 +95,7 @@ unsafe fn apply_damage(fragment: *mut Body, parent: *const Body, settings: Setti
 unsafe fn apply_fuse(parent: *mut Body, settings: Settings) {
     if (*parent).logic == 150 {
         if let Some(time) = settings.fuse_time {
-            (*parent).logic_timer = time;
+            (*parent).logic_f1 = time;
         }
     }
 }
@@ -404,7 +404,7 @@ mod tests {
                 let mut fragment = test_body(0x5a);
                 parent.logic = logic;
                 parent.explosive_power = 17.0;
-                parent.logic_timer = 0.5;
+                parent.logic_f1 = 0.5;
                 fragment.explosive_power = 2.0;
                 fragment.logic_state = 3;
                 let mut expected_parent = body_bytes(&parent);
@@ -415,7 +415,7 @@ mod tests {
                         expected_fragment[offset..offset + 4].copy_from_slice(&value.to_ne_bytes());
                     }
                     if let Some(value) = settings.fuse_time {
-                        let offset = std::mem::offset_of!(Body, logic_timer);
+                        let offset = std::mem::offset_of!(Body, logic_f1);
                         expected_parent[offset..offset + 4].copy_from_slice(&value.to_ne_bytes());
                     }
                 }
