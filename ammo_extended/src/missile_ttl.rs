@@ -19,7 +19,9 @@ struct Site {
 }
 
 const MOV_RCX_RBX: [u8; 3] = [0x48, 0x89, 0xd9];
+#[cfg(not(feature = "1_151"))]
 const MOV_RCX_RSI: [u8; 3] = [0x48, 0x89, 0xf1];
+#[cfg(feature = "1_151")]
 const MOV_RCX_R14: [u8; 3] = [0x4c, 0x89, 0xf1];
 /// `R15` holds the selected `Ammo*` throughout cases 51-55 in both versions.
 const MOV_RDX_R15: [u8; 3] = [0x4c, 0x89, 0xfa];
@@ -151,7 +153,9 @@ mod tests {
     fn register_moves_encode_the_intended_instructions() {
         // MOV RCX, RBX / RSI / R14 and MOV RDX, R15 (REX.W 89 /r, mod=11).
         assert_eq!(MOV_RCX_RBX, [0x48, 0x89, 0xd9]);
+        #[cfg(not(feature = "1_151"))]
         assert_eq!(MOV_RCX_RSI, [0x48, 0x89, 0xf1]);
+        #[cfg(feature = "1_151")]
         assert_eq!(MOV_RCX_R14, [0x4c, 0x89, 0xf1]);
         assert_eq!(MOV_RDX_R15, [0x4c, 0x89, 0xfa]);
     }
