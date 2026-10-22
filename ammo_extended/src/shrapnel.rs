@@ -2,6 +2,10 @@
 //! no native Ammo or Body fields are repurposed.
 
 use crate::Ammo;
+#[cfg(feature = "1_151")]
+use highfleet::v1_151::Body;
+#[cfg(not(feature = "1_151"))]
+use highfleet::v1_163::Body;
 use patchy::{PatchSession, ProcessModule, ReturnType, Trampoline};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -72,58 +76,45 @@ fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> Option<T> {
         .map(|state| f(&mut state.lock().unwrap_or_else(|poison| poison.into_inner())))
 }
 
-unsafe extern "C" fn capture(body: *mut u8, ammo: *const u8) {
+unsafe extern "C" fn capture(body: *mut Body, ammo: *const Ammo) {
     with_state(|state| state.capture(body as usize, ammo as usize));
 }
 
-unsafe extern "C" fn forget(body: *mut u8) {
+unsafe extern "C" fn forget(body: *mut Body) {
     with_state(|state| state.forget(body as usize));
 }
 
-#[cfg(feature = "1_151")]
-const BODY_LOGIC: usize = 0x3b4;
-#[cfg(not(feature = "1_151"))]
-const BODY_LOGIC: usize = 0x3c4;
-#[cfg(feature = "1_151")]
-const BODY_DAMAGE: usize = 0x2cc;
-#[cfg(not(feature = "1_151"))]
-const BODY_DAMAGE: usize = 0x2dc;
-const BODY_FUSE: usize = BODY_LOGIC + 0xc;
-
-unsafe fn apply_damage(fragment: *mut u8, parent: *const u8, settings: Settings) {
-    if parent.add(BODY_LOGIC).cast::<i32>().read_unaligned() == 150 {
+unsafe fn apply_damage(fragment: *mut Body, parent: *const Body, settings: Settings) {
+    if (*parent).logic == 150 {
         if let Some(damage) = settings.damage {
-            fragment
-                .add(BODY_DAMAGE)
-                .cast::<f32>()
-                .write_unaligned(damage);
+            (*fragment).explosive_power = damage;
         }
     }
 }
 
-unsafe fn apply_fuse(parent: *mut u8, settings: Settings) {
-    if parent.add(BODY_LOGIC).cast::<i32>().read_unaligned() == 150 {
+unsafe fn apply_fuse(parent: *mut Body, settings: Settings) {
+    if (*parent).logic == 150 {
         if let Some(time) = settings.fuse_time {
-            parent.add(BODY_FUSE).cast::<f32>().write_unaligned(time);
+            (*parent).logic_timer = time;
         }
     }
 }
 
-unsafe extern "C" fn set_damage(fragment: *mut u8, parent: *const u8) {
+unsafe extern "C" fn set_damage(fragment: *mut Body, parent: *const Body) {
     let settings = with_state(|state| state.bodies.get(&(parent as usize)).copied()).flatten();
     if let Some(settings) = settings {
         apply_damage(fragment, parent, settings);
     }
 }
 
-unsafe extern "C" fn set_fuse(parent: *mut u8) {
+unsafe extern "C" fn set_fuse(parent: *mut Body) {
     let settings = with_state(|state| state.bodies.get(&(parent as usize)).copied()).flatten();
     if let Some(settings) = settings {
         apply_fuse(parent, settings);
     }
 }
 
-unsafe extern "C" fn get_count(parent: *const u8, vanilla_count: u32) -> u32 {
+unsafe extern "C" fn get_count(parent: *const Body, vanilla_count: u32) -> u32 {
     with_state(|state| state.count(parent as usize, vanilla_count)).unwrap_or(vanilla_count)
 }
 
@@ -252,6 +243,31 @@ pub unsafe fn patch(session: &mut PatchSession, module: ProcessModule) -> patchy
 mod tests {
     use super::*;
 
+    fn test_body(fill: u8) -> Body {
+        let mut body = std::mem::MaybeUninit::<Body>::uninit();
+        // Every numeric/byte field accepts all bit patterns. Initialize the raw
+        // pointer separately so the test does not fabricate a vtable address.
+        unsafe {
+            body.as_mut_ptr()
+                .cast::<u8>()
+                .write_bytes(fill, std::mem::size_of::<Body>());
+            (*body.as_mut_ptr()).vtable = std::ptr::null();
+            body.assume_init()
+        }
+    }
+
+    fn body_bytes(body: &Body) -> Vec<u8> {
+        // Layout tests ensure all bytes, including native gaps, are explicit
+        // fields: there is no implicit Rust padding to read in either view.
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref(body).cast::<u8>(),
+                std::mem::size_of::<Body>(),
+            )
+            .to_vec()
+        }
+    }
+
     #[test]
     fn metadata_is_per_projectile_and_removed_on_reinitialization_or_destruction() {
         let a = Settings {
@@ -350,27 +366,31 @@ mod tests {
                     fuse_time: Some(0.75),
                 },
             ] {
-                let mut parent = [0xa5u8; 0x400];
-                parent[BODY_LOGIC..BODY_LOGIC + 4].copy_from_slice(&logic.to_le_bytes());
-                let mut fragment = [0x5au8; 0x400];
-                let mut expected_parent = parent;
-                let mut expected_fragment = fragment;
+                let mut parent = test_body(0xa5);
+                let mut fragment = test_body(0x5a);
+                parent.logic = logic;
+                parent.explosive_power = 17.0;
+                parent.logic_timer = 0.5;
+                fragment.explosive_power = 2.0;
+                fragment.logic_state = 3;
+                let mut expected_parent = body_bytes(&parent);
+                let mut expected_fragment = body_bytes(&fragment);
                 if logic == 150 {
                     if let Some(value) = settings.damage {
-                        expected_fragment[BODY_DAMAGE..BODY_DAMAGE + 4]
-                            .copy_from_slice(&value.to_le_bytes());
+                        let offset = std::mem::offset_of!(Body, explosive_power);
+                        expected_fragment[offset..offset + 4].copy_from_slice(&value.to_ne_bytes());
                     }
                     if let Some(value) = settings.fuse_time {
-                        expected_parent[BODY_FUSE..BODY_FUSE + 4]
-                            .copy_from_slice(&value.to_le_bytes());
+                        let offset = std::mem::offset_of!(Body, logic_timer);
+                        expected_parent[offset..offset + 4].copy_from_slice(&value.to_ne_bytes());
                     }
                 }
                 unsafe {
-                    apply_damage(fragment.as_mut_ptr(), parent.as_ptr(), settings);
-                    apply_fuse(parent.as_mut_ptr(), settings);
+                    apply_damage(&mut fragment, &parent, settings);
+                    apply_fuse(&mut parent, settings);
                 }
-                assert_eq!(parent, expected_parent);
-                assert_eq!(fragment, expected_fragment);
+                assert_eq!(body_bytes(&parent), expected_parent);
+                assert_eq!(body_bytes(&fragment), expected_fragment);
             }
         }
     }
