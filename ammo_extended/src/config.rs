@@ -112,30 +112,6 @@ pub fn parse(contents: &str) -> Result<Config, serde_json::Error> {
     Ok(Config { ammos, shrapnel })
 }
 
-/// Serialize per-ammo overrides without dropping them or changing index alignment.
-pub fn serialize_with_settings(
-    ammos: &[Ammo],
-    settings: &[Settings],
-) -> Result<String, serde_json::Error> {
-    if ammos.len() != settings.len() {
-        return Err(serde::ser::Error::custom(
-            "ammo and shrapnel settings lengths differ",
-        ));
-    }
-    let configs: Vec<_> = ammos
-        .iter()
-        .zip(settings)
-        .map(|(ammo, settings)| {
-            let mut config = ConfigAmmo::from(ammo);
-            config.shrapnel_damage = settings.damage;
-            config.shrapnel_count = settings.count;
-            config.shrapnel_fuse_time = settings.fuse_time;
-            config
-        })
-        .collect();
-    serde_json::to_string_pretty(&configs)
-}
-
 pub fn serialize(ammos: &[Ammo]) -> Result<String, serde_json::Error> {
     let configs: Vec<ConfigAmmo<&Ammo>> = ammos.iter().map(ConfigAmmo::from).collect();
     serde_json::to_string_pretty(&configs)
@@ -144,6 +120,30 @@ pub fn serialize(ammos: &[Ammo]) -> Result<String, serde_json::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serialize per-ammo overrides without dropping them or changing index alignment.
+    fn serialize_with_settings(
+        ammos: &[Ammo],
+        settings: &[Settings],
+    ) -> Result<String, serde_json::Error> {
+        if ammos.len() != settings.len() {
+            return Err(serde::ser::Error::custom(
+                "ammo and shrapnel settings lengths differ",
+            ));
+        }
+        let configs: Vec<_> = ammos
+            .iter()
+            .zip(settings)
+            .map(|(ammo, settings)| {
+                let mut config = ConfigAmmo::from(ammo);
+                config.shrapnel_damage = settings.damage;
+                config.shrapnel_count = settings.count;
+                config.shrapnel_fuse_time = settings.fuse_time;
+                config
+            })
+            .collect();
+        serde_json::to_string_pretty(&configs)
+    }
 
     // Keep native-schema tests focused on the ammo half of the parsed config.
     fn parse(contents: &str) -> Result<Vec<Ammo>, serde_json::Error> {
