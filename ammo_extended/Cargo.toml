@@ -10,9 +10,6 @@ crate-type = ["cdylib"]
 1_151 = []
 1_163 = []
 
-[build]
-target = "x86_64-pc-windows-msvc"
-
 [dependencies]
 highfleet = { path = "../highfleet-rs" }
 highfleet-mod-api = { git = "https://github.com/logdot/Highfleet-Modloader.git" }
