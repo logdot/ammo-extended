@@ -245,13 +245,24 @@ mod tests {
 
     fn test_body(fill: u8) -> Body {
         let mut body = std::mem::MaybeUninit::<Body>::uninit();
-        // Every numeric/byte field accepts all bit patterns. Initialize the raw
-        // pointer separately so the test does not fabricate a vtable address.
+        // Fill opaque state for byte-level assertions, then initialize every
+        // owning string before the Body can be assumed initialized or dropped.
+        // Raw container pointers are never dereferenced by these tests.
         unsafe {
             body.as_mut_ptr()
                 .cast::<u8>()
                 .write_bytes(fill, std::mem::size_of::<Body>());
-            (*body.as_mut_ptr()).vtable = std::ptr::null();
+            let pointer = body.as_mut_ptr();
+            (*pointer).base.base.base.vtable = std::ptr::null();
+            std::ptr::addr_of_mut!((*pointer).base.base.base.class_name)
+                .write(highfleet::general::EscadraString::new());
+            std::ptr::addr_of_mut!((*pointer).base.name)
+                .write(highfleet::general::EscadraString::new());
+            std::ptr::addr_of_mut!((*pointer).oid).write(highfleet::general::EscadraString::new());
+            std::ptr::addr_of_mut!((*pointer).logic_s1)
+                .write(highfleet::general::EscadraString::new());
+            std::ptr::addr_of_mut!((*pointer).ship_convertion_error)
+                .write(highfleet::general::EscadraString::new());
             body.assume_init()
         }
     }
@@ -266,6 +277,29 @@ mod tests {
             )
             .to_vec()
         }
+    }
+
+    #[test]
+    fn test_owned_body_strings_remain_usable_across_native_style_borrows() {
+        let mut body = test_body(0);
+        let text = "A heap-allocated string owned by a Rust Body".to_owned();
+        body.base.base.base.class_name.set_string(&text);
+        body.base.name.set_string(&text);
+        body.oid.set_string(&text);
+        body.logic_s1.set_string(&text);
+        body.ship_convertion_error.set_string(&text);
+        let pointer = std::ptr::from_mut(&mut body);
+        {
+            let borrowed = unsafe { &*pointer };
+            assert_eq!(borrowed.base.base.base.class_name.get_string(), text);
+            assert_eq!(borrowed.base.name.get_string(), text);
+            assert_eq!(borrowed.oid.get_string(), text);
+            assert_eq!(borrowed.logic_s1.get_string(), text);
+            assert_eq!(borrowed.ship_convertion_error.get_string(), text);
+        }
+        assert_eq!(body.oid.get_string(), text);
+        // The test owns this Body; all five heap-backed strings drop normally.
+        drop(body);
     }
 
     #[test]
