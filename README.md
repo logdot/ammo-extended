@@ -126,6 +126,27 @@ The shipped example has been converted without changing the underlying values.
 1.151 has no `shell_enemy` field or native lifespan.
 Its new config accepts optional `lifespan` for missile spawning only, defaulting to 10 seconds.
 
+## City shops (Steam 1.163)
+
+The 1.163 build adds a simple custom-ammo button grid to the city's supplies shop.
+It starts at the top left and fills downward before moving to the next column.
+Buttons show the ammo name, unit price, and city stock.
+
+Entries are detected automatically by comparing configured `item_name` values with the original game definitions.
+Keep identifiers unique and leave the undefined entry at index zero.
+Custom entries need a positive `shop_price`.
+A button is shown when the city stocks the ammo **or** the player owns some to sell back.
+Invalid identifiers, nonpositive prices, and quantities/prices that exceed safe native arithmetic ranges are skipped.
+
+For initial city stock, set `shop_rarity` and `shop_ammount` appropriately **before starting a new campaign**.
+The grid does not replenish stock or migrate existing saves.
+Existing campaigns only show custom ammo already present in city/player inventory.
+Preserve definition order when continuing a campaign; save compatibility after reordering definitions has not been established.
+
+The grid uses the game's standard button/font resources, not per-ammo sprites.
+It is rebuilt with the native shop after transactions.
+Space is bounded by the viewport, with the bottom exit area reserved; if entries do not fit, the mod logs a warning.
+
 ## Limitations
-While you can add variations (e.g. piercing) of ammos, they are not infinite and cannot be purchased at shops.
-This makes their utility very limited in campaigns.
+
+The custom shop grid is **not implemented for 1.151** yet. Added finite ammo variations in that version still cannot be purchased through the vanilla shop display.
