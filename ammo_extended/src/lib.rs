@@ -12,6 +12,8 @@ use log::{debug, error, trace};
 
 mod config;
 mod missile_ttl;
+#[cfg(not(feature = "1_151"))]
+mod shop;
 mod shrapnel;
 
 highfleet_mod_api::export_logger!();
@@ -20,6 +22,9 @@ use patchy::{PatchError, PatchSession, ProcessModule};
 use std::error::Error;
 use std::ffi::{c_char, CStr};
 use std::slice;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static VERSION_SUPPORTED: AtomicBool = AtomicBool::new(false);
 
 unsafe fn prepare_patches(session: &mut PatchSession, module: ProcessModule) -> patchy::Result {
     // Equivalent to `MOV EAX, dword ptr [R15 + 0xCC]
@@ -53,21 +58,34 @@ unsafe extern "C" fn init() -> bool {
 
 #[no_mangle]
 unsafe extern "C" fn version(version: *const c_char) -> bool {
-    let version = CStr::from_ptr(version).to_str().unwrap();
-    if cfg!(feature = "1_151") {
+    VERSION_SUPPORTED.store(false, Ordering::Release);
+    if version.is_null() {
+        return false;
+    }
+    let Ok(version) = CStr::from_ptr(version).to_str() else {
+        return false;
+    };
+    let supported = if cfg!(feature = "1_151") {
         version == "Steam 1.151"
-    } else if cfg!(feature = "1_163") {
-        version == "Steam 1.163"
     } else if version == "Gog 1.163" {
         error!("Gog 1.163 detected");
-        error!("Your game will crash. Ammo Extended only supports steam versions of the game.");
+        error!("Ammo Extended only supports Steam versions; initialization will be refused.");
         false
     } else {
-        false
-    }
+        // Match the no-feature fallback used by the layouts and patch sites.
+        version == "Steam 1.163"
+    };
+    VERSION_SUPPORTED.store(supported, Ordering::Release);
+    supported
 }
 
 unsafe fn attach() -> bool {
+    // The modloader warns on a version mismatch but still calls init().
+    if !VERSION_SUPPORTED.load(Ordering::Acquire) {
+        error!("Refusing to install Ammo Extended on an unsupported game version");
+        return false;
+    }
+
     let module = match ProcessModule::main() {
         Ok(module) => module,
         Err(err) => {
@@ -130,10 +148,18 @@ unsafe fn attach() -> bool {
                 return false;
             }
         }
+
+        #[cfg(all(not(feature = "1_151"), target_os = "windows"))]
+        if let Err(err) = shop::patch(&mut patches, module, ammo_list, &conf_ammos) {
+            error!("Failed to prepare custom ammo shop: {err}");
+            return false;
+        }
+
         if let Err(err) = patches.install_permanently() {
             error!("Failed to install ammo patches: {err}");
             return false;
         }
+
         debug!("Dropping old ammo list");
         ammo_list.iter().for_each(std::mem::drop);
 
@@ -144,10 +170,33 @@ unsafe fn attach() -> bool {
         std::mem::forget(conf_ammos);
         debug!("New ammo list set");
 
-        debug!("Ammo patches installed (shrapnel hooks enabled only when configured)");
+        debug!(
+            "Ammo patches installed (custom shop on 1.163; shrapnel hooks only when configured)"
+        );
 
         true
     } else {
         false
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn version_gate_matches_layout_selection_and_fails_closed() {
+        unsafe {
+            assert_eq!(version(c"Steam 1.151".as_ptr()), cfg!(feature = "1_151"));
+            assert_eq!(version(c"Steam 1.163".as_ptr()), !cfg!(feature = "1_151"));
+            assert_eq!(
+                VERSION_SUPPORTED.load(Ordering::Acquire),
+                !cfg!(feature = "1_151")
+            );
+            assert!(!version(c"Gog 1.163".as_ptr()));
+            assert!(!VERSION_SUPPORTED.load(Ordering::Acquire));
+            assert!(!version(c"unknown".as_ptr()));
+            assert!(!version(std::ptr::null()));
+        }
     }
 }
