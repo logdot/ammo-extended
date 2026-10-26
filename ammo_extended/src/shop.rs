@@ -201,7 +201,7 @@ unsafe fn build(room: *mut Gui) {
             continue;
         }
 
-        let Some((x, y)) = grid.position(count) else {
+        let Some((x, y, button_width, button_height)) = grid.native_bounds(count) else {
             log::warn!("Custom ammo grid is full; remaining entries do not fit this viewport");
             break;
         };
@@ -235,8 +235,8 @@ unsafe fn build(room: *mut Gui) {
             c"SUPPLIES_AMMO".as_ptr(),
             x,
             y,
-            Grid::CELL_WIDTH,
-            Grid::CELL_HEIGHT,
+            button_width,
+            button_height,
             label.as_ptr(),
             c"gui_std".as_ptr(),
             c"gui_std_focus".as_ptr(),
@@ -259,10 +259,10 @@ unsafe fn build(room: *mut Gui) {
         let load: Load = std::mem::transmute(*vtable.add(0x88 / 8));
         load(button);
         log::info!(
-            "Created custom ammo button {:?}: city stock={}, player owned={}, button={:p}, parent={:p}, state={}, position=({}, {}), stage={} (room stage={}), opacity={}, clickable={}, text={:?}, font={:?}",
+            "Created custom ammo button {:?}: city stock={}, player owned={}, button={:p}, parent={:p}, state={}, position=({}, {}), native size=({}, {}), stage={} (room stage={}), opacity={}, clickable={}, text={:?}, font={:?}",
             entry.item, stock, owned, button, (*button).base.base.master.target,
             (*button).base.base.state, (*button).base.position_x, (*button).base.position_y,
-            (*button).base.stage, (*room).base.stage, (*button).base.opacity,
+            button_width, button_height, (*button).base.stage, (*room).base.stage, (*button).base.opacity,
             (*button).clickable, (*button).text.get_string(), (*button).font.get_string(),
         );
         count += 1;

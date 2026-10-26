@@ -93,6 +93,9 @@ impl Grid {
     pub(super) const CELL_HEIGHT: f32 = 36.0;
     const MARGIN: f32 = 16.0;
     const GAP: f32 = 8.0;
+    // Steam 1.163 supplies builders scale pixel-layout geometry by DAT_140354698.
+    // Preserve the native float's bits instead of substituting an exact 1/7 division.
+    const NATIVE_UNITS_PER_PIXEL: f32 = f32::from_bits(0x3e12_491b);
     /// Layout space reserved for the native exit control, in addition to the outer margins.
     const EXIT_AREA_HEIGHT: f32 = 64.0;
 
@@ -118,7 +121,19 @@ impl Grid {
         })
     }
 
-    pub(super) fn position(self, index: usize) -> Option<(f32, f32)> {
+    /// Native initializer bounds, converted together from the pixel-layout rectangle.
+    /// These are shop-world units, not final screen pixels after camera projection.
+    pub(super) fn native_bounds(self, index: usize) -> Option<(f32, f32, f32, f32)> {
+        let (x, y) = self.position(index)?;
+        Some((
+            x * Self::NATIVE_UNITS_PER_PIXEL,
+            y * Self::NATIVE_UNITS_PER_PIXEL,
+            Self::CELL_WIDTH * Self::NATIVE_UNITS_PER_PIXEL,
+            Self::CELL_HEIGHT * Self::NATIVE_UNITS_PER_PIXEL,
+        ))
+    }
+
+    fn position(self, index: usize) -> Option<(f32, f32)> {
         if index >= self.rows * self.columns {
             return None;
         }
@@ -212,6 +227,23 @@ mod tests {
             (first.0 + 288.0, first.1)
         );
         assert!(grid.position(grid.rows * grid.columns).is_none());
+    }
+
+    #[test]
+    fn native_bounds_convert_position_and_size_to_shop_world_units() {
+        let grid = Grid::new(1920, 1080).unwrap();
+        let (x, y, width, height) = grid.native_bounds(0).unwrap();
+        assert!((x - -114.85703).abs() < 0.0001);
+        assert!((y - -72.285645).abs() < 0.0001);
+        assert!((width - 40.0).abs() < 0.0001);
+        assert!((height - 5.142852).abs() < 0.0001);
+
+        let next_row = grid.native_bounds(1).unwrap();
+        let next_column = grid.native_bounds(grid.rows).unwrap();
+        assert!((next_row.1 - y - 44.0 * Grid::NATIVE_UNITS_PER_PIXEL).abs() < 0.0001);
+        assert!((next_column.0 - x - 288.0 * Grid::NATIVE_UNITS_PER_PIXEL).abs() < 0.0001);
+        assert_eq!((next_row.2, next_row.3), (width, height));
+        assert!(grid.native_bounds(grid.rows * grid.columns).is_none());
     }
 
     #[test]
