@@ -69,6 +69,7 @@ pub unsafe fn patch(
 ) -> patchy::Result {
     let entries = entries(vanilla, configured);
     if entries.is_empty() {
+        log::info!("Custom ammo grid not installed: no eligible custom ammo definitions");
         return Ok(());
     }
 
@@ -152,28 +153,51 @@ unsafe fn build(room: *mut Gui) {
     let Some(state) = STATE.get() else { return };
 
     if room.is_null() {
+        log::warn!("Custom ammo grid skipped: supplies-room hook received a null room");
         return;
     }
 
     let city = (state.city as *const *mut c_void).read();
     let profile = (state.get_profile)();
     if city.is_null() || profile.is_null() {
+        log::warn!("Custom ammo grid skipped: city={city:p}, profile={profile:p}");
         return;
     }
 
-    let Some(grid) = Grid::new(
-        (state.width as *const i32).read(),
-        (state.height as *const i32).read(),
-    ) else {
-        log::warn!("Custom ammo grid skipped: unsupported viewport size");
+    let width = (state.width as *const i32).read();
+    let height = (state.height as *const i32).read();
+    let cash = (*profile).cash;
+    log::info!(
+        "Building custom ammo grid: definitions={}, viewport={}x{}, cash={}, room={:p}, name={:?}, state={}, position=({}, {}), stage={}, opacity={}",
+        state.entries.len(), width, height, cash, room, (*room).identifier.get_string(),
+        (*room).base.base.state, (*room).base.position_x, (*room).base.position_y,
+        (*room).base.stage, (*room).base.opacity,
+    );
+    let Some(grid) = Grid::new(width, height) else {
+        log::warn!("Custom ammo grid skipped: unsupported viewport size {width}x{height}");
         return;
     };
 
     let mut count = 0;
+    let mut unavailable = 0;
+    let mut rejected = 0;
     for entry in &state.entries {
         let stock = (state.city_quantity)(city, entry.item.as_ptr());
         let owned = (state.player_quantity)(profile.cast(), entry.item.as_ptr());
-        if !can_offer(stock, owned, entry.price, (*profile).cash) {
+        if !can_offer(stock, owned, entry.price, cash) {
+            if stock == 0 && owned == 0 {
+                unavailable += 1;
+                log::info!(
+                    "Custom ammo {:?}: no button created (city stock=0, player owned=0); loading a definition does not add stock to an existing campaign",
+                    entry.item,
+                );
+            } else {
+                rejected += 1;
+                log::warn!(
+                    "Custom ammo {:?}: no button created (native transaction safety check failed: city stock={}, player owned={}, price={}, cash={})",
+                    entry.item, stock, owned, entry.price, cash,
+                );
+            }
             continue;
         }
 
@@ -186,6 +210,7 @@ unsafe fn build(room: *mut Gui) {
             CString::new(format!("{} | ${} | {}", entry.title, entry.price, stock)).unwrap();
         let memory = (state.allocate)(std::mem::size_of::<Gui>());
         if memory.is_null() {
+            log::error!("Custom ammo grid allocation failed for {:?}", entry.item);
             break;
         }
 
@@ -221,7 +246,7 @@ unsafe fn build(room: *mut Gui) {
         );
 
         (state.copy_string)(
-            &raw mut (*button).item_key,
+            &raw mut (*button).gui_s1,
             entry.item.as_ptr(),
             entry.item.as_bytes().len(),
         );
@@ -233,9 +258,19 @@ unsafe fn build(room: *mut Gui) {
         let vtable = (*button).base.base.base.base.vtable as *const usize;
         let load: Load = std::mem::transmute(*vtable.add(0x88 / 8));
         load(button);
+        log::info!(
+            "Created custom ammo button {:?}: city stock={}, player owned={}, button={:p}, parent={:p}, state={}, position=({}, {}), stage={} (room stage={}), opacity={}, clickable={}, text={:?}, font={:?}",
+            entry.item, stock, owned, button, (*button).base.base.master.target,
+            (*button).base.base.state, (*button).base.position_x, (*button).base.position_y,
+            (*button).base.stage, (*room).base.stage, (*button).base.opacity,
+            (*button).clickable, (*button).text.get_string(), (*button).font.get_string(),
+        );
         count += 1;
     }
 
-    log::debug!("Added {count} custom ammo shop buttons");
+    log::info!(
+        "Custom ammo grid result: created={count}, unavailable={unavailable}, rejected={rejected}, configured={}",
+        state.entries.len(),
+    );
     // The displaced native room Relink call runs next, registering the new children too.
 }
