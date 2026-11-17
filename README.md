@@ -24,6 +24,25 @@ The shipped config also contains `90` for harpoon, `100` for KAZ, and `0` for sp
 These values are not an exhaustive validation enum.
 The loader accepts a `u32` without enforcing a behavior whitelist.
 
+## Rocket firing sounds
+
+Cannon shells already take their firing sound from the ammo record.
+The gun-launched rocket cases used to ignore those fields and always play the hardcoded `missile_launch` set.
+The shared `FireShell` sound blocks used by behaviors `51`, `52` and `55` now select the rocket sound the same way as a cannon shell:
+
+- `shell_out` when the player's ship fires and the camera is zoomed in.
+- `shell_far` when the shot is distant (zoomed out).
+- `shell_enemy` when a non-player ship fires and the camera is zoomed in.
+  Steam 1.151 has no `shell_enemy` field, so it uses `shell_far` for those shots.
+
+The selector also applies to rockets fired by aircraft, which reach the same `FireShell` cases.
+
+Behavior `54`'s `FireShell` case has no launch sound in vanilla, so there is nothing to reroute for it.
+
+Like the cannon sound fields, these values name a **sound set** (`shell_out_med`, which expands to `shell_out_med_01..04`), not an individual sound file.
+
+`shell_in` is unchanged: the game already reads it when a round is loaded into a magazine, and rockets use that same path.
+
 ## Shrapnel count, damage and fuse time
 
 Each ammo entry accepts three independent optional overrides for shrapnel projectiles (`logic: 150`):
