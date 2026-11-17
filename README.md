@@ -35,7 +35,6 @@ The shared `FireShell` sound blocks used by behaviors `51`, `52` and `55` now se
 - `shell_enemy` when a non-player ship fires and the camera is zoomed in.
   Steam 1.151 has no `shell_enemy` field, so it uses `shell_far` for those shots.
 
-Leaving a field empty keeps the vanilla `missile_launch` set for that case, so existing configurations keep working.
 The selector also applies to rockets fired by aircraft, which reach the same `FireShell` cases.
 
 Behavior `54`'s `FireShell` case has no launch sound in vanilla, so there is nothing to reroute for it.

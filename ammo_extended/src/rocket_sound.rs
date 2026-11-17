@@ -36,7 +36,8 @@ const ZOOM_LEVEL_RVA: usize = 0x39115c;
 #[cfg(not(feature = "1_151"))]
 const ZOOM_LEVEL_RVA: usize = 0x3c11cc;
 
-/// Variant count used for the vanilla `missile_launch_01..02` fallback.
+/// Variant count used for the vanilla `missile_launch_01..02` sounds when no
+/// ammo has been recorded for the shot.
 const VANILLA_ROCKET_VARIANTS: u32 = 2;
 /// `shell_out` sets have three variants in vanilla.
 const SHELL_OUT_VARIANTS: u32 = 3;
@@ -132,17 +133,6 @@ fn select(ammo: &Ammo, player: bool, far: bool) -> (&EscadraString, u32) {
     }
 }
 
-/// Returns the configured sound set only when it is non-empty, so an unset
-/// field keeps vanilla `missile_launch`.
-fn configured(ammo: &Ammo, player: bool, far: bool) -> Option<(&EscadraString, u32)> {
-    let (field, variants) = select(ammo, player, far);
-    if field.get_string().is_empty() {
-        None
-    } else {
-        Some((field, variants))
-    }
-}
-
 /// Records the `Ammo*` `FireShell` is about to stop keeping in `R15`.
 ///
 /// # Safety
@@ -166,6 +156,7 @@ unsafe extern "C" fn build_rocket_sound(
     infix: *const u8,
 ) -> *mut u8 {
     let build: BuildName = std::mem::transmute(BUILD_NAME.load(Ordering::Relaxed));
+
     let ammo = CURRENT_AMMO.load(Ordering::Relaxed);
     if ammo == 0 || base.is_null() || infix.is_null() {
         return build(base, 1, VANILLA_ROCKET_VARIANTS, infix);
@@ -173,11 +164,8 @@ unsafe extern "C" fn build_rocket_sound(
 
     let far = *(ZOOM_LEVEL.load(Ordering::Relaxed) as *const i32) > 3;
     let ammo = &*(ammo as *const Ammo);
-    let (name, variants) = match configured(ammo, player != 0, far) {
-        Some((field, variants)) => (field.get_string(), variants),
-        None => return build(base, 1, VANILLA_ROCKET_VARIANTS, infix),
-    };
-    build(name.as_ptr(), 1, variants, infix)
+    let (field, variants) = select(ammo, player != 0, far);
+    build(field.get_string().as_ptr(), 1, variants, infix)
 }
 
 /// Redirects the FireShell rocket sound-name builders to the ammo's fields.
@@ -297,10 +285,12 @@ mod tests {
     }
 
     #[test]
-    fn empty_sound_field_keeps_the_vanilla_launch_sound() {
+    fn empty_sound_field_is_selected_like_any_other_value() {
         let mut ammo: Ammo = unsafe { std::mem::zeroed() };
         ammo.shell_out = EscadraString::from("");
-        assert!(configured(&ammo, true, false).is_none());
+        let (field, variants) = select(&ammo, true, false);
+        assert_eq!(field.get_string(), "");
+        assert_eq!(variants, 3);
     }
 
     #[test]
