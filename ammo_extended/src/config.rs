@@ -1,10 +1,11 @@
-use crate::{shrapnel::Settings, Ammo};
+use crate::{shrapnel::Settings, tracer, Ammo};
 
 /// Native ammo and mod-only settings in matching config-file order.
-/// `shrapnel[i]` belongs to `ammos[i]`, independently of caliber or logic.
+/// `shrapnel[i]` and `tracer[i]` belong to `ammos[i]`, independently of caliber or logic.
 pub struct Config {
     pub ammos: Vec<Ammo>,
     pub shrapnel: Vec<Settings>,
+    pub tracer: Vec<tracer::Settings>,
 }
 
 #[cfg(feature = "1_151")]
@@ -29,6 +30,28 @@ struct ConfigAmmo<T = Ammo> {
     shrapnel_count: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shrapnel_fuse_time: Option<f32>,
+    /// Sprite drawn as the shell's tracer, used for both the head and the tail.
+    /// An optional name of an image (or animation) defined in a `.res` file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tracer_image: Option<String>,
+    /// Overrides the tracer's head segment only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tracer_image_head: Option<String>,
+    /// Overrides the tracer's tail streak only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tracer_image_tail: Option<String>,
+    /// ARGB tint for every tracer sprite this ammo loads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tracer_color: Option<tracer::Color>,
+    /// Uniform tracer length and width multiplier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tracer_scale: Option<f32>,
+    /// Tracer length multiplier (`halfHeight` of the drawn sprite).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tracer_length: Option<f32>,
+    /// Tracer width multiplier (`halfWidth` of the drawn sprite).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tracer_width: Option<f32>,
     #[cfg(feature = "1_151")]
     #[serde(default = "default_missile_lifespan")]
     lifespan: f32,
@@ -90,9 +113,30 @@ impl<'a> From<&'a Ammo> for ConfigAmmo<&'a Ammo> {
             shrapnel_damage: None,
             shrapnel_count: None,
             shrapnel_fuse_time: None,
+            tracer_image: None,
+            tracer_image_head: None,
+            tracer_image_tail: None,
+            tracer_color: None,
+            tracer_scale: None,
+            tracer_length: None,
+            tracer_width: None,
             #[cfg(feature = "1_151")]
             lifespan: f32::from_bits(ammo.padding_164h),
             ammo,
+        }
+    }
+}
+
+impl<'a> From<&'a ConfigAmmo> for tracer::Settings {
+    fn from(config: &'a ConfigAmmo) -> Self {
+        Self {
+            image: config.tracer_image.clone(),
+            head: config.tracer_image_head.clone(),
+            tail: config.tracer_image_tail.clone(),
+            color: config.tracer_color,
+            scale: config.tracer_scale,
+            length: config.tracer_length,
+            width: config.tracer_width,
         }
     }
 }
@@ -101,15 +145,21 @@ pub fn parse(contents: &str) -> Result<Config, serde_json::Error> {
     let configs: Vec<ConfigAmmo> = serde_json::from_str(contents)?;
     let mut ammos = Vec::with_capacity(configs.len());
     let mut shrapnel = Vec::with_capacity(configs.len());
+    let mut tracer = Vec::with_capacity(configs.len());
     for config in configs {
         shrapnel.push(Settings {
             damage: config.shrapnel_damage,
             count: config.shrapnel_count,
             fuse_time: config.shrapnel_fuse_time,
         });
+        tracer.push(tracer::Settings::from(&config));
         ammos.push(Ammo::from(config));
     }
-    Ok(Config { ammos, shrapnel })
+    Ok(Config {
+        ammos,
+        shrapnel,
+        tracer,
+    })
 }
 
 pub fn serialize(ammos: &[Ammo]) -> Result<String, serde_json::Error> {
@@ -340,6 +390,173 @@ mod tests {
         assert_eq!(config.shrapnel[0], Settings::default());
         let serialized = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
         assert!(!serialized.contains("shrapnel_count"));
+    }
+
+    #[test]
+    fn omitted_tracer_images_keep_every_ammo_vanilla() {
+        let config = super::parse(CONFIG).unwrap();
+        assert_eq!(config.tracer.len(), config.ammos.len());
+        assert!(config
+            .tracer
+            .iter()
+            .all(|settings| *settings == tracer::Settings::default()));
+        let json = serialize(&config.ammos).unwrap();
+        assert!(!json.contains("tracer_image"));
+        let expected: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&json).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn tracer_images_are_per_ammo_and_do_not_change_native_fields() {
+        let original: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        let original_ammos = parse(CONFIG).unwrap();
+        let mut json = original.clone();
+        json[0]["tracer_image"] = "my_tracer_01".into();
+        json[1]["tracer_image"] = "my_tracer_02".into();
+        json[1]["tracer_image_head"] = "my_head_02".into();
+        json[2]["tracer_image_tail"] = "my_tail_03".into();
+        json[3]["tracer_image"] = "my_tracer_04".into();
+        json[3]["tracer_color"] = "#FF8000".into();
+        json[3]["tracer_scale"] = 2.0.into();
+        json[4]["tracer_length"] = 0.25.into();
+        json[4]["tracer_width"] = serde_json::json!(-3.0);
+
+        let config = super::parse(&json.to_string()).unwrap();
+        assert_eq!(
+            config.tracer[0],
+            tracer::Settings {
+                image: Some("my_tracer_01".into()),
+                ..tracer::Settings::default()
+            }
+        );
+        assert_eq!(
+            config.tracer[1],
+            tracer::Settings {
+                image: Some("my_tracer_02".into()),
+                head: Some("my_head_02".into()),
+                ..tracer::Settings::default()
+            }
+        );
+        assert_eq!(
+            config.tracer[2],
+            tracer::Settings {
+                tail: Some("my_tail_03".into()),
+                ..tracer::Settings::default()
+            }
+        );
+        assert_eq!(
+            config.tracer[3],
+            tracer::Settings {
+                image: Some("my_tracer_04".into()),
+                color: Some(tracer::Color(0xffff_8000)),
+                scale: Some(2.0),
+                ..tracer::Settings::default()
+            }
+        );
+        assert_eq!(config.tracer[3].length_factor(), 2.0);
+        assert_eq!(config.tracer[3].width_factor(), 2.0);
+        assert_eq!(
+            config.tracer[4],
+            tracer::Settings {
+                length: Some(0.25),
+                width: Some(-3.0),
+                ..tracer::Settings::default()
+            }
+        );
+        assert!(config.tracer[5..]
+            .iter()
+            .all(|settings| *settings == tracer::Settings::default()));
+        // The native ammo records are untouched by the mod-only keys.
+        assert_eq!(
+            serde_json::to_value(&config.ammos).unwrap(),
+            serde_json::to_value(&original_ammos).unwrap()
+        );
+        // Re-serializing the debug dump drops them (like the shrapnel overrides).
+        let dump = serialize(&config.ammos).unwrap();
+        assert!(!dump.contains("tracer_image"));
+        assert!(!dump.contains("tracer_color"));
+        assert!(!dump.contains("tracer_scale"));
+    }
+
+    #[test]
+    fn tracer_image_values_must_be_strings_and_null_is_absent() {
+        let original: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        for field in ["tracer_image", "tracer_image_head", "tracer_image_tail"] {
+            let mut json = original.clone();
+            json[0][field] = 5.into();
+            assert!(
+                super::parse(&json.to_string()).is_err(),
+                "accepted {field}=5"
+            );
+            json[0][field] = serde_json::Value::Null;
+            let config = super::parse(&json.to_string()).unwrap();
+            assert_eq!(config.tracer[0], tracer::Settings::default());
+            // An empty name is a value like any other; the loader rejects it.
+            json[0][field] = "".into();
+            let config = super::parse(&json.to_string()).unwrap();
+            assert_eq!(
+                config.tracer[0],
+                tracer::Settings {
+                    image: (field == "tracer_image").then(String::new),
+                    head: (field == "tracer_image_head").then(String::new),
+                    tail: (field == "tracer_image_tail").then(String::new),
+                    ..tracer::Settings::default()
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn tracer_color_and_scale_values_must_be_numbers_or_colours() {
+        let original: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+
+        for field in ["tracer_scale", "tracer_length", "tracer_width"] {
+            let mut json = original.clone();
+            json[0][field] = "1.5".into();
+            assert!(super::parse(&json.to_string()).is_err());
+            json[0][field] = serde_json::Value::Null;
+            assert_eq!(
+                super::parse(&json.to_string()).unwrap().tracer[0],
+                tracer::Settings::default()
+            );
+            // Finite, infinite and negative values are all taken as written.
+            for (text, expected) in [("0", 0.0f32), ("-2.5", -2.5), ("1e39", f32::INFINITY)] {
+                json[0][field] = "REPLACE".into();
+                let text_json = json.to_string().replace("\"REPLACE\"", text);
+                let settings = super::parse(&text_json).unwrap().tracer[0].clone();
+                let actual = match field {
+                    "tracer_scale" => settings.scale,
+                    "tracer_length" => settings.length,
+                    _ => settings.width,
+                };
+                assert_eq!(actual, Some(expected), "{field}={text}");
+            }
+        }
+
+        for (value, expected) in [
+            ("\"#102030\"", Some(tracer::Color(0xff10_2030))),
+            ("\"#80102030\"", Some(tracer::Color(0x8010_2030))),
+            ("4278190080", Some(tracer::Color(0xff00_0000))),
+            ("null", None),
+        ] {
+            let mut json = original.clone();
+            json[0]["tracer_color"] = "REPLACE".into();
+            let text = json.to_string().replace("\"REPLACE\"", value);
+            let settings = super::parse(&text).unwrap().tracer[0].clone();
+            assert_eq!(settings.color, expected, "tracer_color={value}");
+        }
+        for value in ["\"#12345\"", "\"red\"", "-1", "4294967296", "true"] {
+            let mut json = original.clone();
+            json[0]["tracer_color"] = "REPLACE".into();
+            let text = json.to_string().replace("\"REPLACE\"", value);
+            assert!(
+                super::parse(&text).is_err(),
+                "accepted tracer_color={value}"
+            );
+        }
     }
 
     #[test]
