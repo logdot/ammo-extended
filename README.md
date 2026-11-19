@@ -77,6 +77,61 @@ They only affect shrapnel runtime logic; other logic values do not use them.
 The original do-while loop underflows its 64-bit counter and almost certainly freezes or crashes the game when the shell bursts.
 The mod logs a warning at config activation but accepts zero unchanged; it does not skip or clamp it.
 
+## Tracer images
+
+The tracer a cannon shell draws is selected per ammo entry:
+
+```json
+{
+  "caliber": 999,
+  "behavior": 25,
+  "logic": 100,
+  "tracer_image": "my_tracer_01",
+  "tracer_color": "#FF8040",
+  "tracer_scale": 1.5
+}
+```
+
+This is a partial entry; keep the other required ammo fields.
+
+- `tracer_image` names a media image from a `.res` file, the same way `magazine_image` does.
+  It replaces both halves of the tracer drawn for that ammo's shells.
+- `tracer_image_head` replaces only the segment drawn at the shell, and `tracer_image_tail` only the streak behind it.
+  Both are optional and fall back to `tracer_image`; an entry that sets both never loads `tracer_image`.
+- Omit all image keys to keep the vanilla tracer: `sign_tracer_02` at the shell and `sign_tracer_01` twice behind it, or their `_blue` twins while the shell uses the logic-160 proximity fuze.
+  The game draws every tracer segment with the vanilla textures unless an ammo names its own.
+- `tracer_color` tints every sprite that ammo loads.
+  Use `"#RRGGBB"`, `"#AARRGGBB"` or a 32-bit ARGB integer.
+  The colour multiplies the texture, so `"#808080"` halves the brightness and `"#FF0000"` keeps only the red channel.
+  The default is white, i.e. the texture as authored.
+- `tracer_scale` multiplies both the tracer's length and its width.
+  `tracer_length` and `tracer_width` override one axis each and take precedence over `tracer_scale`
+  (including an explicit `1.0`, which resets that axis to the game's own value).
+  `1.0` is the game's own value; values are taken as written, so `0.0` hides the tracer and negative values mirror it.
+
+**Warning: one image name is one shared sprite.** The media manager keeps a single sprite object per name and
+hands the same one to every caller, so a tint belongs to the *image*, not to the ammo entry:
+
+- Naming one of the game's own tracers (`sign_tracer_01`, `sign_tracer_02`, `sign_tracer_01_blue`,
+  `sign_tracer_02_blue`) and giving it a `tracer_color` recolours **every** tracer that draws that image:
+  ammo you did not configure, and enemy shells too. Logic-160 (proximity fuze) shells use the `_blue` images,
+  so they keep their own colour.
+- The tint lasts for the session: switching to an ammo without any tracer keys does not restore the original
+  colour, because that ammo still draws the same, now tinted, image.
+- Two ammo entries that name the same image with two different colours cannot both be satisfied: the first
+  colour loaded wins for both, and the mod logs a warning.
+- The workaround is a dedicated image (or animation) per colour: copy the tracer art into your own `.res` entry
+  and name that instead of a vanilla sprite.
+  The mod logs a warning on the first shot of an ammo that reuses one of the game's own tracer sprites, naming
+  both the ammo and the image, so this shows up in `Modloader/logs`.
+
+- The sprite is loaded the first time that ammo fires, with blend state 0, tinted by `tracer_color`.
+  A name that is not in the loaded media resources is logged once and that ammo keeps the vanilla tracer.
+- An animation name is accepted and resolved to the game's own animation sprite for that name.
+  Whether the game advances its frames while it is used as a tracer is untested; the draw call only renders the object's current frame.
+- Only cannon shells are affected, because shells are the only projectiles the game draws a tracer for.
+  Gun-launched rockets, canisters and mines keep their own sprites.
+
 ## Missile lifetime
 
 Ammo using missile spawning behaviour honors its configured lifetime in seconds instead of the vanilla hardcoded 10-second lifetime.

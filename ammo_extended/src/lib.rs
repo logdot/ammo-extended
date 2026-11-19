@@ -16,6 +16,7 @@ mod rocket_sound;
 #[cfg(not(feature = "1_151"))]
 mod shop;
 mod shrapnel;
+mod tracer;
 
 highfleet_mod_api::export_logger!();
 
@@ -151,6 +152,14 @@ unsafe fn attach() -> bool {
             }
         }
 
+        let tracer_hooks = tracer::configure(&conf_ammos, &config.tracer);
+        if tracer_hooks.any {
+            if let Err(err) = tracer::patch(&mut patches, module, tracer_hooks) {
+                error!("Failed to prepare shell tracer hooks: {err}");
+                return false;
+            }
+        }
+
         #[cfg(all(not(feature = "1_151"), target_os = "windows"))]
         if let Err(err) = shop::patch(&mut patches, module, ammo_list, &conf_ammos) {
             error!("Failed to prepare custom ammo shop: {err}");
@@ -173,7 +182,7 @@ unsafe fn attach() -> bool {
         debug!("New ammo list set");
 
         debug!(
-            "Ammo patches installed (custom shop on 1.163; shrapnel hooks only when configured)"
+            "Ammo patches installed (custom shop on 1.163; shrapnel and shell tracer hooks only when configured)"
         );
 
         true
