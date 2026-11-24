@@ -13,6 +13,7 @@ use log::{debug, error, trace};
 mod config;
 mod missile_ttl;
 mod rocket_sound;
+mod rocket_speed;
 #[cfg(not(feature = "1_151"))]
 mod shop;
 mod shrapnel;
@@ -44,6 +45,7 @@ unsafe fn prepare_patches(session: &mut PatchSession, module: ProcessModule) -> 
     }
     session.overwrite(switch_addr, &switch_instruction)?;
     missile_ttl::patch(session, module)?;
+    rocket_speed::patch(session, module)?;
     rocket_sound::patch(session, module)
 }
 
