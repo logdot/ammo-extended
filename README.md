@@ -43,6 +43,41 @@ Like the cannon sound fields, these values name a **sound set** (`shell_out_med`
 
 `shell_in` is unchanged: the game already reads it when a round is loaded into a magazine, and rockets use that same path.
 
+## Rocket acceleration and burn time
+
+Two optional per-ammo fields tune the flight of logic `130` and `132` rockets
+(behaviors `51`, `52`, `54` and `55`, including aircraft launches):
+
+- `rocket_acceleration` is the burn force in game units/s², applied as
+  `mass * this` while the motor burns. Vanilla is **`500.0`**.
+- `rocket_burn_seconds` is how long that force is applied. Vanilla is
+  **`1.5`**.
+
+```json
+{
+  "item_name": "ITEM_AMMO_220MM",
+  "rocket_acceleration": 900.0,
+  "rocket_burn_seconds": 2.5
+}
+```
+
+This is a partial entry; keep the other required ammo fields. Omit either key
+to keep its vanilla value for that ammo. The values are independent per entry —
+one rocket can accelerate harder without burning longer, and another can burn
+longer at the stock force.
+
+- Steam 1.163 and Steam 1.151 are both supported.
+- Values are taken as written: `0.0` disables thrust, a negative acceleration
+  pushes backwards, and a negative burn time never applies thrust. A
+  non-finite value is ignored and keeps vanilla.
+- The HUD's dashed predicted rocket path still integrates the vanilla `500`
+  and `1.5 s`. A tuned rocket's preview therefore does not match its real path.
+- The 300 mm rocket launched as a **ship part** (not through `FireShell`) has
+  no ammo record and always keeps vanilla `500` / `1.5`.
+- If another mod already owns the affected instructions, these two fields are
+  skipped with a warning while the rest of the ammo table, sounds, shrapnel,
+  shop and missile lifetime stay active.
+
 ## Shrapnel count, damage and fuse time
 
 Each ammo entry accepts three independent optional overrides for shrapnel projectiles (`logic: 150`):
