@@ -1,10 +1,12 @@
-use crate::{shrapnel::Settings, Ammo};
+use crate::{rocket_tuning::Settings as RocketSettings, shrapnel::Settings, Ammo};
 
 /// Native ammo and mod-only settings in matching config-file order.
-/// `shrapnel[i]` belongs to `ammos[i]`, independently of caliber or logic.
+/// `shrapnel[i]` and `rocket[i]` belong to `ammos[i]`, independently of
+/// caliber or logic.
 pub struct Config {
     pub ammos: Vec<Ammo>,
     pub shrapnel: Vec<Settings>,
+    pub rocket: Vec<RocketSettings>,
 }
 
 #[cfg(feature = "1_151")]
@@ -29,6 +31,12 @@ struct ConfigAmmo<T = Ammo> {
     shrapnel_count: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shrapnel_fuse_time: Option<f32>,
+    /// Rocket burn force in game units/s² (`mass * this`). Omitted = `500`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rocket_acceleration: Option<f32>,
+    /// Rocket burn duration in seconds. Omitted = `1.5`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rocket_burn_seconds: Option<f32>,
     #[cfg(feature = "1_151")]
     #[serde(default = "default_missile_lifespan")]
     lifespan: f32,
@@ -90,6 +98,8 @@ impl<'a> From<&'a Ammo> for ConfigAmmo<&'a Ammo> {
             shrapnel_damage: None,
             shrapnel_count: None,
             shrapnel_fuse_time: None,
+            rocket_acceleration: None,
+            rocket_burn_seconds: None,
             #[cfg(feature = "1_151")]
             lifespan: f32::from_bits(ammo.padding_164h),
             ammo,
@@ -101,15 +111,24 @@ pub fn parse(contents: &str) -> Result<Config, serde_json::Error> {
     let configs: Vec<ConfigAmmo> = serde_json::from_str(contents)?;
     let mut ammos = Vec::with_capacity(configs.len());
     let mut shrapnel = Vec::with_capacity(configs.len());
+    let mut rocket = Vec::with_capacity(configs.len());
     for config in configs {
         shrapnel.push(Settings {
             damage: config.shrapnel_damage,
             count: config.shrapnel_count,
             fuse_time: config.shrapnel_fuse_time,
         });
+        rocket.push(RocketSettings {
+            acceleration: config.rocket_acceleration,
+            burn_seconds: config.rocket_burn_seconds,
+        });
         ammos.push(Ammo::from(config));
     }
-    Ok(Config { ammos, shrapnel })
+    Ok(Config {
+        ammos,
+        shrapnel,
+        rocket,
+    })
 }
 
 pub fn serialize(ammos: &[Ammo]) -> Result<String, serde_json::Error> {
@@ -125,20 +144,24 @@ mod tests {
     fn serialize_with_settings(
         ammos: &[Ammo],
         settings: &[Settings],
+        rocket: &[RocketSettings],
     ) -> Result<String, serde_json::Error> {
-        if ammos.len() != settings.len() {
+        if ammos.len() != settings.len() || ammos.len() != rocket.len() {
             return Err(serde::ser::Error::custom(
-                "ammo and shrapnel settings lengths differ",
+                "ammo, shrapnel and rocket settings lengths differ",
             ));
         }
         let configs: Vec<_> = ammos
             .iter()
             .zip(settings)
-            .map(|(ammo, settings)| {
+            .zip(rocket)
+            .map(|((ammo, settings), rocket)| {
                 let mut config = ConfigAmmo::from(ammo);
                 config.shrapnel_damage = settings.damage;
                 config.shrapnel_count = settings.count;
                 config.shrapnel_fuse_time = settings.fuse_time;
+                config.rocket_acceleration = rocket.acceleration;
+                config.rocket_burn_seconds = rocket.burn_seconds;
                 config
             })
             .collect();
@@ -163,7 +186,8 @@ mod tests {
             .shrapnel
             .iter()
             .all(|settings| *settings == Settings::default()));
-        let json = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+        let json =
+            serialize_with_settings(&config.ammos, &config.shrapnel, &config.rocket).unwrap();
         assert!(!json.contains("shrapnel_damage"));
         assert!(!json.contains("shrapnel_count"));
         assert!(!json.contains("shrapnel_fuse_time"));
@@ -172,6 +196,55 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&json).unwrap(),
             expected
         );
+    }
+
+    #[test]
+    fn rocket_overrides_are_optional_independent_and_round_trip() {
+        let original = parse(CONFIG).unwrap();
+        let mut json: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+        json[1]["rocket_acceleration"] = 900.0.into();
+        json[2]["rocket_burn_seconds"] = 2.5.into();
+        let config = super::parse(&json.to_string()).unwrap();
+        assert_eq!(config.rocket.len(), config.ammos.len());
+        assert_eq!(
+            config.rocket[1],
+            RocketSettings {
+                acceleration: Some(900.0),
+                burn_seconds: None,
+            }
+        );
+        assert_eq!(
+            config.rocket[2],
+            RocketSettings {
+                acceleration: None,
+                burn_seconds: Some(2.5),
+            }
+        );
+        assert_eq!(config.rocket[0], RocketSettings::default());
+        // The native ammo records must be byte-for-byte unchanged.
+        for index in [1, 2] {
+            assert_eq!(
+                serde_json::to_value(&config.ammos[index]).unwrap(),
+                serde_json::to_value(&original[index]).unwrap()
+            );
+        }
+        let serialized =
+            serialize_with_settings(&config.ammos, &config.shrapnel, &config.rocket).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&serialized).unwrap(),
+            json
+        );
+        // The debug dump exposes only native fields.
+        assert!(!serialize(&config.ammos).unwrap().contains("rocket_"));
+    }
+
+    #[test]
+    fn shipped_config_has_no_rocket_overrides() {
+        let config = super::parse(CONFIG).unwrap();
+        assert!(config
+            .rocket
+            .iter()
+            .all(|settings| *settings == RocketSettings::default()));
     }
 
     #[test]
@@ -214,7 +287,8 @@ mod tests {
         assert!(config.shrapnel[3..]
             .iter()
             .all(|settings| *settings == Settings::default()));
-        let serialized = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+        let serialized =
+            serialize_with_settings(&config.ammos, &config.shrapnel, &config.rocket).unwrap();
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&serialized).unwrap(),
             json
@@ -259,7 +333,8 @@ mod tests {
                 serde_json::to_value(&config.ammos).unwrap(),
                 serde_json::to_value(&original_ammos).unwrap()
             );
-            let serialized = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+            let serialized =
+                serialize_with_settings(&config.ammos, &config.shrapnel, &config.rocket).unwrap();
             assert_eq!(
                 serde_json::from_str::<serde_json::Value>(&serialized).unwrap(),
                 json
@@ -338,21 +413,25 @@ mod tests {
         json[0]["shrapnel_fuse_time"] = serde_json::Value::Null;
         let config = super::parse(&json.to_string()).unwrap();
         assert_eq!(config.shrapnel[0], Settings::default());
-        let serialized = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+        let serialized =
+            serialize_with_settings(&config.ammos, &config.shrapnel, &config.rocket).unwrap();
         assert!(!serialized.contains("shrapnel_count"));
     }
 
     #[test]
     fn serialization_rejects_misalignment_but_does_not_validate_float_values() {
         let mut config = super::parse(CONFIG).unwrap();
-        assert!(serialize_with_settings(&config.ammos, &config.shrapnel[1..]).is_err());
+        assert!(
+            serialize_with_settings(&config.ammos, &config.shrapnel[1..], &config.rocket).is_err()
+        );
         for value in [-1.0, f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
             config.shrapnel[0] = Settings {
                 damage: Some(value),
                 count: None,
                 fuse_time: Some(value),
             };
-            let json = serialize_with_settings(&config.ammos, &config.shrapnel).unwrap();
+            let json =
+                serialize_with_settings(&config.ammos, &config.shrapnel, &config.rocket).unwrap();
             let json: serde_json::Value = serde_json::from_str(&json).unwrap();
             // serde_json represents non-finite floats as null, not JSON numbers.
             let expected = if value.is_finite() {

@@ -8,11 +8,12 @@ use highfleet::v1_163::Ammo;
 
 #[cfg(not(any(feature = "1_151", feature = "1_163")))]
 use highfleet::v1_163::Ammo;
-use log::{debug, error, trace};
+use log::{debug, error, trace, warn};
 
 mod config;
 mod missile_ttl;
 mod rocket_sound;
+mod rocket_tuning;
 #[cfg(not(feature = "1_151"))]
 mod shop;
 mod shrapnel;
@@ -151,6 +152,22 @@ unsafe fn attach() -> bool {
             }
         }
 
+        // Rocket tuning is its own session: a conflict at its hook sites (for
+        // example another mod already there) must not disable the ammo table,
+        // shop, sounds or shrapnel.
+        let rocket = rocket_tuning::configure(&conf_ammos, &config.rocket);
+        let mut rocket_patches = PatchSession::new();
+        let mut rocket_ready = false;
+        if rocket.any() {
+            match unsafe { rocket_tuning::patch(&mut rocket_patches, module, rocket) } {
+                Ok(true) => rocket_ready = true,
+                Ok(false) => {
+                    warn!("Rocket acceleration/burn-time hooks skipped; values stay vanilla")
+                }
+                Err(err) => error!("Failed to prepare rocket tuning hooks: {err}"),
+            }
+        }
+
         #[cfg(all(not(feature = "1_151"), target_os = "windows"))]
         if let Err(err) = shop::patch(&mut patches, module, ammo_list, &conf_ammos) {
             error!("Failed to prepare custom ammo shop: {err}");
@@ -160,6 +177,15 @@ unsafe fn attach() -> bool {
         if let Err(err) = patches.install_permanently() {
             error!("Failed to install ammo patches: {err}");
             return false;
+        }
+
+        if rocket_ready {
+            match unsafe { rocket_patches.install_permanently() } {
+                Ok(()) => debug!("Rocket acceleration/burn-time hooks installed"),
+                Err(err) => error!(
+                    "Rocket tuning hooks not installed: {err}; every other ammo feature stays active"
+                ),
+            }
         }
 
         debug!("Dropping old ammo list");
