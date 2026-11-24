@@ -43,6 +43,19 @@ Like the cannon sound fields, these values name a **sound set** (`shell_out_med`
 
 `shell_in` is unchanged: the game already reads it when a round is loaded into a magazine, and rockets use that same path.
 
+## Rocket launch speed
+
+Cannon shells already use `speed` as their launch velocity.
+Gun-launched rockets (behaviors `51`, `52` and `55`) used to ignore it: they inherited only the firing ship's velocity and then ramped up from their thrusters.
+They now add `speed` along the rocket's heading at launch, on top of the firing body's velocity.
+A 220 mm rocket with `"speed": 150.0` leaves the tube at 150 units/second before its thruster adds more.
+
+- Steam 1.163 and Steam 1.151 are both supported.
+- `speed` is taken as written: `0.0` keeps the vanilla launch, and a negative value launches backwards.
+- The rocket's own random spread is included, because the speed is applied to the angle the game has already randomised.
+- Behavior `54` (the 300 mm rocket, logic `132`) is **not** affected.
+  Vanilla logic 132 replaces the velocity with its master body's velocity on the first tick, which would discard a launch speed.
+
 ## Shrapnel count, damage and fuse time
 
 Each ammo entry accepts three independent optional overrides for shrapnel projectiles (`logic: 150`):
