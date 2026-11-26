@@ -12,9 +12,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 highfleet = { path = "../highfleet-rs" }
-highfleet-mod-api = { git = "https://github.com/logdot/Highfleet-Modloader.git", rev = "6eec6a5ad78942567f91e9359264b19e50348bf6" }
+highfleet-mod-api = { git = "https://github.com/logdot/Highfleet-Modloader.git", rev = "5547834da9543827f3023619ae6c4cb2474bf949" }
 serde = { version = "1.0.175", features = ["derive"] }
 serde_json = "1.0.103"
 log = "0.4.*"
 
-patchy = { package = "highfleet-patchy-client", git = "https://github.com/logdot/Highfleet-Modloader.git", rev = "6eec6a5ad78942567f91e9359264b19e50348bf6" }
+patchy = { package = "highfleet-patchy-client", git = "https://github.com/logdot/Highfleet-Modloader.git", rev = "5547834da9543827f3023619ae6c4cb2474bf949" }
