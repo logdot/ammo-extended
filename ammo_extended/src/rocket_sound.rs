@@ -19,7 +19,10 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use highfleet::general::EscadraString;
-use patchy::{PatchError, PatchSession, ProcessModule, ReturnType, Trampoline};
+use patchy::{
+    CallBridge, DetourSite, FlagPolicy, KeepReturn, PatchSession, ProcessModule, StackAlignment,
+    Trampoline,
+};
 
 use crate::Ammo;
 
@@ -44,65 +47,23 @@ const SHELL_OUT_VARIANTS: u32 = 3;
 /// `shell_far` / `shell_enemy` sets have four variants in vanilla.
 const SHELL_DISTANT_VARIANTS: u32 = 4;
 
-/// A `CALL Sound_BuildName` site inside `FireShell`.
-struct SoundSite {
-    rva: usize,
-    original: [u8; 5],
-}
+/// Length of the `CALL Sound_BuildName` replaced inside `FireShell`.
+const SOUND_CALL_LEN: usize = 5;
 
-/// A `MOVSS [RSP + 0x38], XMM0` site immediately before `R15` is overwritten.
-struct StashSite {
-    rva: usize,
-    original: [u8; 6],
-}
+/// Length of the `MOVSS [RSP + 0x38], XMM0` replayed before `R15` is overwritten.
+const STASH_INSTRUCTION_LEN: usize = 6;
 
 #[cfg(feature = "1_151")]
-const SOUND_SITES: &[SoundSite] = &[
-    SoundSite {
-        rva: 0x3179e,
-        original: [0xe8, 0xdd, 0x08, 0x17, 0x00],
-    },
-    SoundSite {
-        rva: 0x31d7a,
-        original: [0xe8, 0x01, 0x03, 0x17, 0x00],
-    },
-];
+const SOUND_SITES: [usize; 2] = [0x3179e, 0x31d7a];
 
 #[cfg(not(feature = "1_151"))]
-const SOUND_SITES: &[SoundSite] = &[
-    SoundSite {
-        rva: 0x311bb,
-        original: [0xe8, 0xf0, 0x0d, 0x18, 0x00],
-    },
-    SoundSite {
-        rva: 0x317d4,
-        original: [0xe8, 0xd7, 0x07, 0x18, 0x00],
-    },
-];
+const SOUND_SITES: [usize; 2] = [0x311bb, 0x317d4];
 
 #[cfg(feature = "1_151")]
-const STASH_SITES: &[StashSite] = &[
-    StashSite {
-        rva: 0x31623,
-        original: [0xf3, 0x0f, 0x11, 0x44, 0x24, 0x38],
-    },
-    StashSite {
-        rva: 0x31c35,
-        original: [0xf3, 0x0f, 0x11, 0x44, 0x24, 0x38],
-    },
-];
+const STASH_SITES: [usize; 2] = [0x31623, 0x31c35];
 
 #[cfg(not(feature = "1_151"))]
-const STASH_SITES: &[StashSite] = &[
-    StashSite {
-        rva: 0x3104a,
-        original: [0xf3, 0x0f, 0x11, 0x44, 0x24, 0x38],
-    },
-    StashSite {
-        rva: 0x3168f,
-        original: [0xf3, 0x0f, 0x11, 0x44, 0x24, 0x38],
-    },
-];
+const STASH_SITES: [usize; 2] = [0x3104a, 0x3168f];
 
 /// `MOV RCX, R15`: pass the selected ammo to [`record_ammo`].
 const STASH_ARGUMENT_SETUP: [u8; 3] = [0x4c, 0x89, 0xf9];
@@ -168,57 +129,58 @@ unsafe extern "C" fn build_rocket_sound(
     build(field.get_string().as_ptr(), 1, variants, infix)
 }
 
+/// Records the ammo, then runs the displaced `MOVSS` before resuming.
+///
+/// # Safety
+/// The displaced instructions must be replayable verbatim at the trampoline.
+unsafe fn stash_trampoline(detour: &DetourSite) -> Trampoline {
+    let mut trampoline = Trampoline::new();
+    trampoline.call(CallBridge {
+        callback: record_ammo as *const (),
+        incoming_stack: StackAlignment::Aligned16,
+        flags: FlagPolicy::KeepProduced,
+        keep_return: KeepReturn::Neither,
+        before_call: &STASH_ARGUMENT_SETUP,
+        after_call: &[],
+    });
+    detour.replay_verbatim(&mut trampoline);
+    detour.resume(&mut trampoline);
+    trampoline
+}
+
 /// Redirects the FireShell rocket sound-name builders to the ammo's fields.
 ///
 /// # Safety
 ///
 /// Must run against the game version selected by the `1_151` feature.
 pub unsafe fn patch(session: &mut PatchSession, module: ProcessModule) -> patchy::Result {
-    BUILD_NAME.store(
-        module.resolve_rva(BUILD_NAME_RVA)? as usize,
-        Ordering::Relaxed,
-    );
-    ZOOM_LEVEL.store(
-        module.resolve_rva(ZOOM_LEVEL_RVA)? as usize,
-        Ordering::Relaxed,
-    );
+    BUILD_NAME.store(module.resolve_rva(BUILD_NAME_RVA)?, Ordering::Relaxed);
+    ZOOM_LEVEL.store(module.resolve_rva(ZOOM_LEVEL_RVA)?, Ordering::Relaxed);
 
-    for site in STASH_SITES {
-        let address = module.resolve_rva(site.rva)?;
-        let actual = std::slice::from_raw_parts(address as *const u8, site.original.len());
-        if actual != site.original {
-            return Err(PatchError::SourceChanged { address });
-        }
-
-        let mut trampoline = Trampoline::new();
-        trampoline.preserved_call(
-            record_ammo as *const (),
-            &STASH_ARGUMENT_SETUP,
-            &[],
-            ReturnType::None,
-        );
-        trampoline.bytes(&site.original);
-        trampoline.relative_jump(address + site.original.len());
-        session.detour_trampoline(address, site.original.len(), trampoline)?;
+    for rva in STASH_SITES {
+        let address = module.resolve_rva(rva)?;
+        // `MOVSS [RSP+0x38],XMM0` has no RIP-relative operand.
+        session.detour_trampoline_with(address, STASH_INSTRUCTION_LEN, |detour| {
+            Ok(stash_trampoline(&detour))
+        })?;
         log::debug!("Prepared rocket ammo stash at {address:#x}");
     }
 
-    for site in SOUND_SITES {
-        let address = module.resolve_rva(site.rva)?;
-        let actual = std::slice::from_raw_parts(address as *const u8, site.original.len());
-        if actual != site.original {
-            return Err(PatchError::SourceChanged { address });
-        }
+    for rva in SOUND_SITES {
+        let address = module.resolve_rva(rva)?;
 
-        let mut trampoline = Trampoline::new();
-        trampoline.preserved_call(
-            build_rocket_sound as *const (),
-            &SOUND_ARGUMENT_SETUP,
-            &[],
-            ReturnType::Rax,
-        );
-        trampoline.relative_jump(address + site.original.len());
-        session.detour_trampoline(address, site.original.len(), trampoline)?;
+        session.patch_call(
+            address,
+            SOUND_CALL_LEN,
+            CallBridge {
+                callback: build_rocket_sound as *const (),
+                incoming_stack: StackAlignment::Aligned16,
+                flags: FlagPolicy::KeepProduced,
+                keep_return: KeepReturn::Rax,
+                before_call: &SOUND_ARGUMENT_SETUP,
+                after_call: &[],
+            },
+        )?;
         log::debug!("Prepared rocket firing sound hook at {address:#x}");
     }
     Ok(())
@@ -240,6 +202,33 @@ mod tests {
             ammo.shell_enemy = EscadraString::from("shell_out_enemy_med");
         }
         ammo
+    }
+
+    #[test]
+    fn stash_records_the_ammo_before_replaying_the_installer_snapshot() {
+        for rva in STASH_SITES {
+            let address = 0x140000000 + rva;
+            let trampoline_address = address + 0x10000;
+            let snapshot = [0xcc; STASH_INSTRUCTION_LEN];
+            let bytes = unsafe { stash_trampoline(&DetourSite::new(STASH_INSTRUCTION_LEN)) }
+                .into_plan()
+                .unwrap()
+                .build_for_site(trampoline_address, &snapshot, address + snapshot.len())
+                .unwrap();
+
+            let (call, rest) = bytes.split_at(bytes.len() - snapshot.len() - 5);
+            let callback = (record_ammo as *const () as usize).to_le_bytes();
+            assert!(call
+                .windows(callback.len())
+                .any(|window| window == callback));
+            assert_eq!(&rest[..snapshot.len()], snapshot);
+            assert_eq!(rest[snapshot.len()], 0xe9);
+            let displacement = i32::from_le_bytes(rest[snapshot.len() + 1..].try_into().unwrap());
+            assert_eq!(
+                (trampoline_address + bytes.len()) as i64 + displacement as i64,
+                (address + snapshot.len()) as i64
+            );
+        }
     }
 
     #[test]
@@ -316,15 +305,5 @@ mod tests {
         assert_eq!(SOUND_ARGUMENT_SETUP, [0x41, 0x0f, 0xb6, 0xd4]);
         // MOV RCX, R15 (REX.WRB 89 /r).
         assert_eq!(STASH_ARGUMENT_SETUP, [0x4c, 0x89, 0xf9]);
-    }
-
-    #[test]
-    fn site_tables_match_the_expected_sizes_and_opcodes() {
-        assert_eq!(SOUND_SITES.len(), 2);
-        assert!(SOUND_SITES.iter().all(|site| site.original[0] == 0xe8));
-        assert_eq!(STASH_SITES.len(), 2);
-        assert!(STASH_SITES
-            .iter()
-            .all(|site| { site.original == [0xf3, 0x0f, 0x11, 0x44, 0x24, 0x38] }));
     }
 }

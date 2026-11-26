@@ -6,7 +6,10 @@ use crate::Ammo;
 use highfleet::v1_151::Body;
 #[cfg(not(feature = "1_151"))]
 use highfleet::v1_163::Body;
-use patchy::{PatchSession, ProcessModule, ReturnType, Trampoline};
+use patchy::{
+    CallBridge, DetourSite, FlagPolicy, KeepReturn, PatchSession, ProcessModule, StackAlignment,
+    Trampoline,
+};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -193,34 +196,27 @@ fn sites() -> [Site; 5] {
     ]
 }
 
-fn trampoline(site: &Site, address: usize, original: &[u8]) -> Trampoline {
+/// # Safety
+/// The displaced instructions must be replayable verbatim at the trampoline.
+unsafe fn trampoline(site: &Site, detour: &DetourSite) -> Trampoline {
     let mut code = Trampoline::new();
     // Replay first, with the original RSP. This preserves the destructor's home
     // slot store and leaves vanilla damage/fuse intact when an override is absent.
-    code.bytes(original);
-    code.bytes(&[0x9c]); // PUSHFQ; preserved_call preserves registers but not flags.
-    if site.count_result {
-        // Also serves as the eight-byte alignment slot after PUSHFQ.
-        code.bytes(&[0x50]); // PUSH RAX.
-    } else if !site.entry {
-        code.bytes(&[0x48, 0x8d, 0x64, 0x24, 0xf8]); // LEA RSP,[RSP-8], align call.
-    }
-    let result = if site.count_result {
-        ReturnType::Rax
-    } else {
-        ReturnType::None
-    };
-    code.preserved_call(site.callback, site.arguments, &[], result);
-    if site.count_result {
-        // Intentionally replace the nonvolatile loop counter only after the call.
-        // Zero is not special-cased: the original decrementing loop will underflow.
-        code.bytes(STORE_COUNT);
-        code.bytes(&[0x58]); // POP RAX.
-    } else if !site.entry {
-        code.bytes(&[0x48, 0x8d, 0x64, 0x24, 0x08]);
-    }
-    code.bytes(&[0x9d]); // POPFQ.
-    code.relative_jump(address + site.overwrite_len);
+    detour.replay_verbatim(&mut code);
+    code.call(CallBridge {
+        callback: site.callback,
+        // None of the replayed instructions changes RSP.
+        incoming_stack: if site.entry {
+            StackAlignment::Offset8
+        } else {
+            StackAlignment::Aligned16
+        },
+        flags: FlagPolicy::Preserve,
+        keep_return: KeepReturn::Neither,
+        before_call: site.arguments,
+        after_call: if site.count_result { STORE_COUNT } else { &[] },
+    });
+    detour.resume(&mut code);
     code
 }
 
@@ -232,9 +228,9 @@ pub unsafe fn patch(session: &mut PatchSession, module: ProcessModule) -> patchy
 
         // These sites contain no RIP-relative operands or relative branches;
         // copying their complete instructions requires no relocation.
-        let original = std::slice::from_raw_parts(address as *const u8, site.overwrite_len);
-        let code = trampoline(&site, address, original);
-        session.detour_trampoline(address, site.overwrite_len, code)?;
+        session.detour_trampoline_with(address, site.overwrite_len, |detour| {
+            Ok(trampoline(&site, &detour))
+        })?;
     }
     Ok(())
 }
@@ -435,39 +431,22 @@ mod tests {
         }
     }
 
+    fn trampoline_bytes(site: &Site, address: usize, snapshot: &[u8]) -> Vec<u8> {
+        unsafe { trampoline(site, &DetourSite::new(site.overwrite_len)) }
+            .into_plan()
+            .unwrap()
+            .build_for_site(address + 0x10000, snapshot, address + site.overwrite_len)
+            .unwrap()
+    }
+
     #[test]
-    fn trampolines_copy_supplied_bytes_and_balance_flag_frames() {
+    fn trampolines_replay_the_installer_snapshot_then_resume_after_the_span() {
         for site in sites() {
             let address = 0x140000000 + site.rva;
-            let mut source = vec![0x90; site.overwrite_len];
-            source[0] = 0xcc;
-            let expected = source.clone();
-            let code = trampoline(&site, address, &source);
-            source.fill(0);
-            let bytes = code.build(address + 0x10000).unwrap();
-            assert!(bytes.starts_with(&expected));
-            assert_eq!(bytes[site.overwrite_len], 0x9c);
-            if site.count_result {
-                assert!(!site.entry);
-                assert_eq!(site.overwrite_len, 8);
-                assert_eq!(bytes[site.overwrite_len + 1], 0x50); // PUSH RAX aligns and saves.
-                let count_assignment = bytes.len() - 10;
-                assert_eq!(&bytes[count_assignment..count_assignment + 3], STORE_COUNT);
-                assert_eq!(bytes[count_assignment + 3], 0x58); // POP RAX, no zero branch.
-                #[cfg(feature = "1_151")]
-                {
-                    assert_eq!(site.rva, 0x33899);
-                    assert_eq!(STORE_COUNT, [0x41, 0x89, 0xc7]);
-                    assert_eq!(COUNT_ARGUMENTS, [0x48, 0x89, 0xf1, 0x44, 0x89, 0xfa]);
-                }
-                #[cfg(not(feature = "1_151"))]
-                {
-                    assert_eq!(site.rva, 0x33e77);
-                    assert_eq!(STORE_COUNT, [0x41, 0x89, 0xc5]);
-                    assert_eq!(COUNT_ARGUMENTS, [0x48, 0x89, 0xf1, 0x44, 0x89, 0xea]);
-                }
-            }
-            assert_eq!(bytes[bytes.len() - 6], 0x9d);
+            let mut snapshot = vec![0x90; site.overwrite_len];
+            snapshot[0] = 0xcc;
+            let bytes = trampoline_bytes(&site, address, &snapshot);
+            assert!(bytes.starts_with(&snapshot));
             assert_eq!(bytes[bytes.len() - 5], 0xe9);
             let displacement = i32::from_le_bytes(bytes[bytes.len() - 4..].try_into().unwrap());
             assert_eq!(
@@ -475,5 +454,28 @@ mod tests {
                 (address + site.overwrite_len) as i64
             );
         }
+    }
+
+    #[test]
+    fn count_hook_routes_the_callback_result_before_the_bridge_restores_rax() {
+        let site = sites().into_iter().find(|site| site.count_result).unwrap();
+        let bytes = trampoline_bytes(
+            &site,
+            0x140000000 + site.rva,
+            &vec![0x90; site.overwrite_len],
+        );
+        #[cfg(feature = "1_151")]
+        let expected = [0x41, 0x89, 0xc7]; // MOV R15D,EAX.
+        #[cfg(not(feature = "1_151"))]
+        let expected = [0x41, 0x89, 0xc5]; // MOV R13D,EAX.
+
+        // The bridge's inline callback address is followed by after_call.
+        let callback = (get_count as *const () as usize).to_le_bytes();
+        let after_call = bytes
+            .windows(callback.len())
+            .position(|window| window == callback)
+            .expect("trampoline must call get_count")
+            + callback.len();
+        assert_eq!(&bytes[after_call..after_call + expected.len()], &expected);
     }
 }

@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use highfleet::v1_151::Body;
 #[cfg(not(feature = "1_151"))]
 use highfleet::v1_163::Body;
-use patchy::{PatchError, PatchSession, ProcessModule, ReturnType, Trampoline};
+use patchy::{CallBridge, FlagPolicy, KeepReturn, PatchSession, ProcessModule, StackAlignment};
 
 use crate::Ammo;
 
@@ -134,7 +134,7 @@ unsafe extern "C" fn set_angle_and_speed(body: *mut Body, ammo: *const Ammo, ang
 ///
 /// Must run against the game version selected by the `1_151` feature.
 pub unsafe fn patch(session: &mut PatchSession, module: ProcessModule) -> patchy::Result {
-    let expected_set_angle = module.resolve_rva(BODY_SET_ANGLE_RVA)?;
+    BODY_SET_ANGLE.store(module.resolve_rva(BODY_SET_ANGLE_RVA)?, Ordering::Relaxed);
     BODY_SET_LINEAR_VELOCITY.store(
         module.resolve_rva(BODY_SET_LINEAR_VELOCITY_RVA)?,
         Ordering::Relaxed,
@@ -142,31 +142,23 @@ pub unsafe fn patch(session: &mut PatchSession, module: ProcessModule) -> patchy
 
     for site in SITES {
         let address = module.resolve_rva(site.rva)?;
-        let original = std::slice::from_raw_parts(address as *const u8, REPLACED_SIZE);
-        if original[0] != 0xe8 {
-            return Err(PatchError::SourceChanged { address });
-        }
-
-        let displacement = i32::from_le_bytes(original[1..5].try_into().unwrap());
-        let target = (address as isize + REPLACED_SIZE as isize + displacement as isize) as usize;
-        if target != expected_set_angle {
-            return Err(PatchError::SourceChanged { address });
-        }
-        BODY_SET_ANGLE.store(target, Ordering::Relaxed);
 
         let mut argument_setup = site.load_body.to_vec();
         argument_setup.extend_from_slice(&MOV_RDX_R15);
         argument_setup.extend_from_slice(&MOVAPS_XMM2_XMM1);
 
-        let mut trampoline = Trampoline::new();
-        trampoline.preserved_call(
-            set_angle_and_speed as *const (),
-            &argument_setup,
-            &[],
-            ReturnType::None,
-        );
-        trampoline.relative_jump(address + REPLACED_SIZE);
-        session.detour_trampoline(address, REPLACED_SIZE, trampoline)?;
+        session.patch_call(
+            address,
+            REPLACED_SIZE,
+            CallBridge {
+                callback: set_angle_and_speed as *const (),
+                incoming_stack: StackAlignment::Aligned16,
+                flags: FlagPolicy::KeepProduced,
+                keep_return: KeepReturn::Neither,
+                before_call: &argument_setup,
+                after_call: &[],
+            },
+        )?;
         log::debug!(
             "Prepared rocket launch-speed hook for behavior {} at {address:#x}",
             site.behavior
