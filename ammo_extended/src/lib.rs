@@ -8,7 +8,7 @@ use highfleet::v1_163::Ammo;
 
 #[cfg(not(any(feature = "1_151", feature = "1_163")))]
 use highfleet::v1_163::Ammo;
-use log::{debug, error, trace};
+use log::{debug, error, trace, warn};
 
 mod config;
 mod missile_ttl;
@@ -25,9 +25,12 @@ use patchy::{PatchSession, ProcessModule};
 use std::error::Error;
 use std::ffi::{c_char, CStr};
 use std::slice;
-use std::sync::atomic::{AtomicBool, Ordering};
 
-static VERSION_SUPPORTED: AtomicBool = AtomicBool::new(false);
+const TARGET_BUILD: &str = if cfg!(feature = "1_151") {
+    "Steam 1.151"
+} else {
+    "Steam 1.163"
+};
 
 unsafe fn prepare_patches(session: &mut PatchSession, module: ProcessModule) -> patchy::Result {
     // Equivalent to `MOV EAX, dword ptr [R15 + 0xCC]`.
@@ -57,35 +60,19 @@ unsafe extern "C" fn init() -> bool {
 
 #[no_mangle]
 unsafe extern "C" fn version(version: *const c_char) -> bool {
-    VERSION_SUPPORTED.store(false, Ordering::Release);
-    if version.is_null() {
-        return false;
+    let reported = (!version.is_null())
+        .then(|| CStr::from_ptr(version).to_str().ok())
+        .flatten()
+        .unwrap_or("unreported");
+    let supported = reported == TARGET_BUILD;
+    if !supported {
+        warn!("Ammo Extended targets {TARGET_BUILD}, but Modloader reported {reported}; continuing with the compiled patch addresses");
     }
-    let Ok(version) = CStr::from_ptr(version).to_str() else {
-        return false;
-    };
-    let supported = if cfg!(feature = "1_151") {
-        version == "Steam 1.151"
-    } else if version == "Gog 1.163" {
-        error!("Gog 1.163 detected");
-        error!("Ammo Extended only supports Steam versions; initialization will be refused.");
-        false
-    } else {
-        // Match the no-feature fallback used by the layouts and patch sites.
-        version == "Steam 1.163"
-    };
-    VERSION_SUPPORTED.store(supported, Ordering::Release);
+    // This reports compatibility to the loader; `init` does not depend on it.
     supported
 }
 
 unsafe fn attach() -> bool {
-    // The Modloader hashes the executable but still calls init() on a mismatch.
-    // The patch sites below assume the verified image has not been modified externally.
-    if !VERSION_SUPPORTED.load(Ordering::Acquire) {
-        error!("Refusing to install Ammo Extended on an unsupported game version");
-        return false;
-    }
-
     let module = match ProcessModule::main() {
         Ok(module) => module,
         Err(err) => {
@@ -192,17 +179,12 @@ mod version_tests {
     use super::*;
 
     #[test]
-    fn version_gate_matches_layout_selection_and_fails_closed() {
+    fn reports_compatibility_for_the_compiled_steam_build() {
         unsafe {
             assert_eq!(version(c"Steam 1.151".as_ptr()), cfg!(feature = "1_151"));
             assert_eq!(version(c"Steam 1.163".as_ptr()), !cfg!(feature = "1_151"));
-            assert_eq!(
-                VERSION_SUPPORTED.load(Ordering::Acquire),
-                !cfg!(feature = "1_151")
-            );
             assert!(!version(c"Gog 1.163".as_ptr()));
-            assert!(!VERSION_SUPPORTED.load(Ordering::Acquire));
-            assert!(!version(c"unknown".as_ptr()));
+            assert!(!version(c"Unknown".as_ptr()));
             assert!(!version(std::ptr::null()));
         }
     }
