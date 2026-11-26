@@ -5,7 +5,7 @@ Changes are made through the ammo_extended.json configuration file.
 
 Ammo Extended requires a Highfleet Modloader build with the shared Patchy service.
 Use the Ammo Extended build that matches your Steam executable (1.151 or 1.163).
-Externally patched executables are unsupported.
+On unsupported versions or externally patched executables, Ammo Extended warns and still attempts to initialize.
 
 ## Changing behaviour
 
