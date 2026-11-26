@@ -27,7 +27,7 @@ dependencies = [
 [[package]]
 name = "highfleet-mod-api"
 version = "0.1.0"
-source = "git+https://github.com/logdot/Highfleet-Modloader.git?rev=6eec6a5ad78942567f91e9359264b19e50348bf6#6eec6a5ad78942567f91e9359264b19e50348bf6"
+source = "git+https://github.com/logdot/Highfleet-Modloader.git?rev=5547834da9543827f3023619ae6c4cb2474bf949#5547834da9543827f3023619ae6c4cb2474bf949"
 dependencies = [
  "log",
  "thiserror 2.0.21",
@@ -36,7 +36,7 @@ dependencies = [
 [[package]]
 name = "highfleet-patchy-client"
 version = "0.1.0"
-source = "git+https://github.com/logdot/Highfleet-Modloader.git?rev=6eec6a5ad78942567f91e9359264b19e50348bf6#6eec6a5ad78942567f91e9359264b19e50348bf6"
+source = "git+https://github.com/logdot/Highfleet-Modloader.git?rev=5547834da9543827f3023619ae6c4cb2474bf949#5547834da9543827f3023619ae6c4cb2474bf949"
 dependencies = [
  "highfleet-mod-api",
  "patchy-code",
@@ -71,7 +71,7 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 [[package]]
 name = "patchy-code"
 version = "0.2.0"
-source = "git+https://github.com/logdot/patchy-rs.git?rev=84993c490f7db47e915d7e0b4270eb3f36f614de#84993c490f7db47e915d7e0b4270eb3f36f614de"
+source = "git+https://github.com/logdot/patchy-rs.git?rev=19e4f77b8987329fc46cfe6c886f11e4e67528a6#19e4f77b8987329fc46cfe6c886f11e4e67528a6"
 dependencies = [
  "thiserror 1.0.65",
 ]

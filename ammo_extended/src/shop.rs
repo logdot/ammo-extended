@@ -96,7 +96,7 @@ pub unsafe fn patch(
     STATE
         .set(state)
         .map_err(|_| "custom ammo shop hook was already prepared")?;
-    session.detour_trampoline_with(address, RELINK_SPAN_LEN, |detour| Ok(trampoline(&detour)))?;
+    session.detour_trampoline(address, RELINK_SPAN_LEN, |detour| Ok(trampoline(&detour)))?;
 
     Ok(())
 }

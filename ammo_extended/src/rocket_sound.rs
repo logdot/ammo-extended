@@ -160,7 +160,7 @@ pub unsafe fn patch(session: &mut PatchSession, module: ProcessModule) -> patchy
     for rva in STASH_SITES {
         let address = module.resolve_rva(rva)?;
         // `MOVSS [RSP+0x38],XMM0` has no RIP-relative operand.
-        session.detour_trampoline_with(address, STASH_INSTRUCTION_LEN, |detour| {
+        session.detour_trampoline(address, STASH_INSTRUCTION_LEN, |detour| {
             Ok(stash_trampoline(&detour))
         })?;
         log::debug!("Prepared rocket ammo stash at {address:#x}");

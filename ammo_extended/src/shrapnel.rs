@@ -228,7 +228,7 @@ pub unsafe fn patch(session: &mut PatchSession, module: ProcessModule) -> patchy
 
         // These sites contain no RIP-relative operands or relative branches;
         // copying their complete instructions requires no relocation.
-        session.detour_trampoline_with(address, site.overwrite_len, |detour| {
+        session.detour_trampoline(address, site.overwrite_len, |detour| {
             Ok(trampoline(&site, &detour))
         })?;
     }
