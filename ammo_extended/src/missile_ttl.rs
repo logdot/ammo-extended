@@ -4,7 +4,7 @@
 //! created missile `Body` with three consecutive `MOV [reg + offset], imm32`
 //! instructions. Each block is replaced with a call to [`set_missile_ttl`].
 
-use patchy::{PatchSession, ProcessModule, ReturnType, Trampoline};
+use patchy::{CallBridge, FlagPolicy, KeepReturn, PatchSession, ProcessModule, StackAlignment};
 
 /// Size of the three consecutive `MOV dword ptr [reg + disp32], imm32` instructions.
 const REPLACED_SIZE: usize = 30;
@@ -107,15 +107,18 @@ pub unsafe fn patch(session: &mut PatchSession, module: ProcessModule) -> patchy
         let mut argument_setup = site.load_body.to_vec();
         argument_setup.extend_from_slice(&MOV_RDX_R15);
 
-        let mut trampoline = Trampoline::new();
-        trampoline.preserved_call(
-            set_missile_ttl as *const (),
-            &argument_setup,
-            &[],
-            ReturnType::None,
-        );
-        trampoline.relative_jump(address + REPLACED_SIZE);
-        session.detour_trampoline(address, REPLACED_SIZE, trampoline)?;
+        session.patch_call(
+            address,
+            REPLACED_SIZE,
+            CallBridge {
+                callback: set_missile_ttl as *const (),
+                incoming_stack: StackAlignment::Aligned16,
+                flags: FlagPolicy::KeepProduced,
+                keep_return: KeepReturn::Neither,
+                before_call: &argument_setup,
+                after_call: &[],
+            },
+        )?;
         log::debug!("Prepared missile TTL hook for behavior {}", site.behavior);
     }
     Ok(())

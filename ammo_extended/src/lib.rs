@@ -19,8 +19,9 @@ mod shop;
 mod shrapnel;
 
 highfleet_mod_api::export_logger!();
+patchy::export_patchy!();
 
-use patchy::{PatchError, PatchSession, ProcessModule};
+use patchy::{PatchSession, ProcessModule};
 use std::error::Error;
 use std::ffi::{c_char, CStr};
 use std::slice;
@@ -29,21 +30,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static VERSION_SUPPORTED: AtomicBool = AtomicBool::new(false);
 
 unsafe fn prepare_patches(session: &mut PatchSession, module: ProcessModule) -> patchy::Result {
-    // Equivalent to `MOV EAX, dword ptr [R15 + 0xCC]
+    // Equivalent to `MOV EAX, dword ptr [R15 + 0xCC]`.
     let switch_instruction: [u8; 7] = [0x41, 0x8b, 0x87, 0xcc, 0x00, 00, 00];
 
-    let (switch_rva, original_switch) = if cfg!(feature = "1_151") {
-        (0x30a37, [0x41, 0x8b, 0x87, 0x34, 0x01, 0x00, 0x00])
+    let switch_rva = if cfg!(feature = "1_151") {
+        0x30a37
     } else {
-        (0x302c8, [0x41, 0x8b, 0x87, 0x54, 0x01, 0x00, 0x00])
+        0x302c8
     };
-    let switch_addr = module.resolve_rva(switch_rva)?;
-    if slice::from_raw_parts(switch_addr as *const u8, original_switch.len()) != original_switch {
-        return Err(PatchError::SourceChanged {
-            address: switch_addr,
-        });
-    }
-    session.overwrite(switch_addr, &switch_instruction)?;
+    session.overwrite(module.resolve_rva(switch_rva)?, &switch_instruction)?;
     missile_ttl::patch(session, module)?;
     rocket_speed::patch(session, module)?;
     rocket_sound::patch(session, module)
@@ -84,7 +79,8 @@ unsafe extern "C" fn version(version: *const c_char) -> bool {
 }
 
 unsafe fn attach() -> bool {
-    // The modloader warns on a version mismatch but still calls init().
+    // The Modloader hashes the executable but still calls init() on a mismatch.
+    // The patch sites below assume the verified image has not been modified externally.
     if !VERSION_SUPPORTED.load(Ordering::Acquire) {
         error!("Refusing to install Ammo Extended on an unsupported game version");
         return false;
@@ -97,7 +93,14 @@ unsafe fn attach() -> bool {
             return false;
         }
     };
-    let mut patches = PatchSession::new();
+    // The Modloader only offers its shared Patchy service through `export_patchy!`.
+    let mut patches = match PatchSession::new() {
+        Ok(session) => session,
+        Err(err) => {
+            error!("Failed to open a Modloader patch session: {err}");
+            return false;
+        }
+    };
     if let Err(err) = prepare_patches(&mut patches, module) {
         error!("Failed to prepare ammo patches: {err}");
         return false;

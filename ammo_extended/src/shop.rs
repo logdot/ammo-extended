@@ -5,19 +5,18 @@ mod logic;
 use self::logic::{can_offer, entries, Entry, Grid};
 use crate::Ammo;
 use highfleet::v1_163::{EscadraString, Gui, Node, Profile};
-use patchy::{PatchError, PatchSession, ProcessModule, ReturnType, Trampoline};
+use patchy::{
+    CallBridge, DetourSite, FlagPolicy, KeepReturn, PatchSession, ProcessModule, StackAlignment,
+    Trampoline,
+};
+use std::error::Error;
 use std::ffi::{c_char, c_void, CString};
 use std::sync::OnceLock;
 
 // Verified Steam 1.163 RVAs.
 const HOOK_RVA: usize = 0x1fbc34;
-// First of the three native room Relink calls, before the security-cookie check.
-const ORIGINAL: &[u8] = &[
-    0x48, 0x8b, 0x07, // MOV RAX,[RDI]
-    0x33, 0xd2, // XOR EDX,EDX
-    0x48, 0x8b, 0xcf, // MOV RCX,RDI
-    0xff, 0x90, 0xb0, 0x00, 0x00, 0x00, // CALL [RAX+0xB0]
-];
+// MOV RAX,[RDI]; XOR EDX,EDX; MOV RCX,RDI; CALL [RAX+0xB0] (first room Relink).
+const RELINK_SPAN_LEN: usize = 14;
 
 type Allocate = unsafe extern "system" fn(usize) -> *mut c_void;
 type Construct = unsafe extern "system" fn(*mut c_void, u8) -> *mut Gui;
@@ -66,7 +65,7 @@ pub unsafe fn patch(
     module: ProcessModule,
     vanilla: &[Ammo],
     configured: &[Ammo],
-) -> patchy::Result {
+) -> Result<(), Box<dyn Error>> {
     let entries = entries(vanilla, configured);
     if entries.is_empty() {
         log::info!("Custom ammo grid not installed: no eligible custom ammo definitions");
@@ -74,32 +73,6 @@ pub unsafe fn patch(
     }
 
     let address = module.resolve_rva(HOOK_RVA)?;
-    if std::slice::from_raw_parts(address as *const u8, ORIGINAL.len()) != ORIGINAL {
-        return Err(PatchError::SourceChanged { address });
-    }
-
-    // The entry-point checks complement the modloader's version gate and hook-byte check.
-    for (rva, expected) in [
-        (
-            0x12a910,
-            &[0x48, 0x89, 0x5c, 0x24, 0x10, 0x48, 0x89, 0x4c, 0x24, 0x08][..],
-        ),
-        (
-            0x16a350,
-            &[
-                0x40, 0x53, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x56, 0x41, 0x57,
-            ][..],
-        ),
-        (
-            0x56e0,
-            &[0x48, 0x89, 0x5c, 0x24, 0x10, 0x48, 0x89, 0x6c, 0x24, 0x18][..],
-        ),
-    ] {
-        let address = module.resolve_rva(rva)?;
-        if std::slice::from_raw_parts(address as *const u8, expected.len()) != expected {
-            return Err(PatchError::SourceChanged { address });
-        }
-    }
 
     let state = State {
         entries,
@@ -120,26 +93,34 @@ pub unsafe fn patch(
         state.entries.len()
     );
 
-    if STATE.set(state).is_err() {
-        log::error!("Custom ammo shop hook was already prepared");
-        return Err(PatchError::SourceChanged { address });
-    }
+    STATE
+        .set(state)
+        .map_err(|_| "custom ammo shop hook was already prepared")?;
+    session.detour_trampoline_with(address, RELINK_SPAN_LEN, |detour| Ok(trampoline(&detour)))?;
 
+    Ok(())
+}
+
+/// Appends the custom entries, then runs the displaced Relink call before resuming.
+///
+/// # Safety
+/// The displaced instructions must be replayable verbatim at the trampoline.
+unsafe fn trampoline(detour: &DetourSite) -> Trampoline {
     let mut code = Trampoline::new();
     // Interior site: RSP is 16-byte aligned; RDI is the supplies-room GUI.
     // The replayed XOR sets flags and no incoming flags are consumed at the continuation.
-    code.preserved_call(
-        append_entries as *const (),
-        &[0x48, 0x89, 0xf9],
-        &[],
-        ReturnType::None,
-    );
+    code.call(CallBridge {
+        callback: append_entries as *const (),
+        incoming_stack: StackAlignment::Aligned16,
+        flags: FlagPolicy::KeepProduced,
+        keep_return: KeepReturn::Neither,
+        before_call: &[0x48, 0x89, 0xf9],
+        after_call: &[],
+    });
     // No relative branches or RIP-relative operands in these displaced instructions.
-    code.bytes(ORIGINAL);
-    code.relative_jump(address + ORIGINAL.len());
-    session.detour_trampoline(address, ORIGINAL.len(), code)?;
-
-    Ok(())
+    detour.replay_verbatim(&mut code);
+    detour.resume(&mut code);
+    code
 }
 
 unsafe extern "system" fn append_entries(room: *mut Gui) {
@@ -273,4 +254,34 @@ unsafe fn build(room: *mut Gui) {
         state.entries.len(),
     );
     // The displaced native room Relink call runs next, registering the new children too.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hook_appends_entries_before_replaying_the_installer_snapshot() {
+        let address = 0x140000000 + HOOK_RVA;
+        let trampoline_address = address + 0x10000;
+        let snapshot = [0xcc; RELINK_SPAN_LEN];
+        let bytes = unsafe { trampoline(&DetourSite::new(RELINK_SPAN_LEN)) }
+            .into_plan()
+            .unwrap()
+            .build_for_site(trampoline_address, &snapshot, address + snapshot.len())
+            .unwrap();
+
+        let (call, rest) = bytes.split_at(bytes.len() - snapshot.len() - 5);
+        let callback = (append_entries as *const () as usize).to_le_bytes();
+        assert!(call
+            .windows(callback.len())
+            .any(|window| window == callback));
+        assert_eq!(&rest[..snapshot.len()], snapshot);
+        assert_eq!(rest[snapshot.len()], 0xe9);
+        let displacement = i32::from_le_bytes(rest[snapshot.len() + 1..].try_into().unwrap());
+        assert_eq!(
+            (trampoline_address + bytes.len()) as i64 + displacement as i64,
+            (address + snapshot.len()) as i64
+        );
+    }
 }

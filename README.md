@@ -3,6 +3,10 @@ Is a mod for the [Highfleet Modloader](https://github.com/logdot/Highfleet-Modlo
 Changes are made through the ammo_extended.json configuration file.
 **Extensive documentation created from Rust is provided in each release in the doc folder.**
 
+Ammo Extended requires a Highfleet Modloader build with the shared Patchy service.
+Use the Ammo Extended build that matches your Steam executable (1.151 or 1.163).
+Externally patched executables are unsupported.
+
 ## Changing behaviour
 
 For both versions, three independent fields control ammo selection and behavior:
